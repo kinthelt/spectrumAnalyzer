@@ -40,6 +40,7 @@ void SerialConsole::printHelp() {
       "  save <1-8>             save current settings as a preset\n"
       "  recall <1-8>           load a preset\n"
       "  delete <1-8>           delete a preset\n"
+      "  audio                  start/stop the live audio view (5 lines a second)\n"
       "  reset                  erase everything (asks to confirm)");
 }
 
@@ -141,6 +142,9 @@ void SerialConsole::runLine(char* line) {
     }
     if (!ok) Serial.printf("Preset %d: %s failed (empty slot?)\n", slot + 1, cmd);
     printStatus();
+  } else if (std::strcmp(cmd, "audio") == 0) {
+    audioMonitor_.setEnabled(!audioMonitor_.enabled());
+    Serial.printf("Audio view %s\n", audioMonitor_.enabled() ? "on (type 'audio' to stop)" : "off");
   } else if (std::strcmp(cmd, "reset") == 0) {
     if (arg1 != nullptr && std::strcmp(arg1, "yes") == 0 && wasArmed) {
       settings_.factoryReset();

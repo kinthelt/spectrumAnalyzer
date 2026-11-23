@@ -13,10 +13,54 @@ constexpr uint32_t kSerialBaud = 115200;
 constexpr int kLedDataPin = 7;    // -> SN74AHCT126N pin 2 (1A); pin 3 (1Y) -> 330R -> strip DIN
 constexpr int kNumLeds = 150;
 
-// ---- Microphone: ICS-43434 over I2S (used from build step 4) -----------------
+// ---- Microphone: ICS-43434 over I2S ------------------------------------------
 constexpr int kMicBclkPin = 4;
 constexpr int kMicWsPin = 5;
 constexpr int kMicDataPin = 6;
+
+// ---- Audio analysis ----------------------------------------------------------
+constexpr int kSampleRate = 48000;
+// Samples per analysis block: 512 @ 48 kHz = 10.7 ms, ~94 updates per second.
+// Must be divisible by 2^(decimation stages - 1); 512 allows up to 9 stages.
+constexpr int kAudioBlockSize = 512;
+constexpr float kBandLowHz = 40.0f;      // centre of LED 0
+constexpr float kBandHighHz = 15000.0f;  // centre of the last LED (mic is rated to ~15 kHz)
+// 1.0 = neighbouring bands meet at their -3 dB points. <1 widens them, >1 narrows them.
+constexpr float kBandQScale = 1.0f;
+// Bands are never narrower than this. A band B Hz wide takes ~1/B s to respond,
+// so this keeps bass LEDs from feeling sluggish (40 Hz LED: ~0.14 s at 5 Hz).
+constexpr float kMinBandwidthHz = 5.0f;
+
+// ---- Level tracking (band power -> 0..1 level per LED) -------------------------
+constexpr float kTrebleTiltDbPerOctave = 3.0f;  // treble boost, pivoting at 1 kHz
+constexpr float kDisplayRangeDb = 45.0f;        // dB from dark to full, below the loudest band
+constexpr float kAgcAttackSeconds = 0.05f;      // gain drops this fast when music gets louder
+constexpr float kAgcReleaseDbPerSecond = 3.0f;  // and recovers this slowly when it gets quieter
+constexpr float kMinSpanDb = 20.0f;             // gain never zooms in closer than this above the noise
+// A band lights only above its noise gate: its average noise level plus
+// kNoiseGateSigmas times how much that noise varies, and at least kNoiseMarginMinDb.
+// Narrow bass bands vary a lot (gate ~15 dB above average), treble very little.
+constexpr float kNoiseGateSigmas = 3.5f;
+constexpr float kNoiseMarginMinDb = 6.0f;
+constexpr float kNoiseSpreadSeconds = 1.0f;     // how quickly each band's noise spread is learned
+constexpr float kWarmupSeconds = 0.5f;          // after boot: floors snap to the room, LEDs stay dark
+constexpr float kFloorFallSeconds = 0.5f;       // during sound, a floor can only fall, this fast
+constexpr float kFloorAdaptSeconds = 3.0f;      // in quiet moments, floors settle on the room level
+// "Quiet moment" detection on the overall level, used to learn the noise floors:
+constexpr float kQuietMarginDb = 4.0f;          // within this of the quietest recent level
+constexpr float kQuietRiseDbPerSecond = 0.5f;   // quietest-level estimate creeps up this slowly,
+constexpr float kSteadyDb = 1.5f;               // but only while the overall level is this steady
+// ...and never above this overall level (dBFS). Bench: quiet room -75, music -70 to -45.
+// Too low and a new noise (fan) is never learned; too high and quiet music is.
+constexpr float kQuietCeilingDb = -64.0f;
+// Silence: a quiet moment with at most this many bands lit, lasting this long.
+constexpr int kSilenceMaxActiveBands = 2;
+constexpr float kSilenceSeconds = 1.5f;
+
+// ---- Audio task --------------------------------------------------------------
+constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1
+constexpr int kAudioTaskPriority = 5;
+constexpr uint32_t kAudioTaskStackBytes = 8192;
 
 // ---- Power -------------------------------------------------------------------
 // FastLED scales brightness down whenever a frame would draw more than this.

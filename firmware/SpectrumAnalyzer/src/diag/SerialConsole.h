@@ -5,10 +5,12 @@
 #include <cstddef>
 
 #include "../settings/SettingsManager.h"
+#include "AudioMonitor.h"
 
 class SerialConsole {
  public:
-  explicit SerialConsole(SettingsManager& settings) : settings_(settings) {}
+  SerialConsole(SettingsManager& settings, AudioMonitor& audioMonitor)
+      : settings_(settings), audioMonitor_(audioMonitor) {}
 
   // Reads any waiting characters and runs complete lines. Never blocks.
   void poll();
@@ -22,6 +24,7 @@ class SerialConsole {
 
   static constexpr size_t kMaxLine = 64;
   SettingsManager& settings_;
+  AudioMonitor& audioMonitor_;
   char line_[kMaxLine];
   size_t length_ = 0;
   bool resetArmed_ = false;

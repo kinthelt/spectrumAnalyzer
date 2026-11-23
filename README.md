@@ -10,9 +10,9 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 3 of 10: lighting modes Solid, Gradient, Rainbow and Twinkle. Settings and 8
-presets are saved to flash and changed from Serial Monitor (type `help`). The two spectrum
-modes show a placeholder comet until the audio pipeline is built (steps 4 and 5).
+Build step 4 of 10: audio analysis runs (150 bands, noise floor, automatic gain, silence
+detection); type `audio` in Serial Monitor for a live view. Lighting modes Solid, Gradient,
+Rainbow and Twinkle work. The two spectrum modes still show a placeholder until step 5.
 
 ## Building the firmware (Arduino IDE)
 

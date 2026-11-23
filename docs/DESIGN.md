@@ -134,12 +134,25 @@ C++ with no Arduino headers, so it is tested on a PC. Hardware code stays thin.
    every band peaks at its own frequency, ±5 neighbours are 33 dB down, no aliasing.
 3. **Level:** smoothed power per band → dB, plus a treble boost (default +3 dB/octave about
    1 kHz) because music has less energy up there.
-4. **Noise floor:** a per-band floor tracks the quietest recent level slowly, so room noise
-   (about −75 dBFS here) stays dark without a startup calibration step.
-5. **Automatic gain:** the brightest band sets the top of a 45 dB window, which follows the
-   room's loudness: quick to come down when music gets loud, slow to recover.
-6. **Silence:** if every band is under its floor for about 1.5 s, spectrum modes fade to dark
-   over about 2 s. Any sound brings them back immediately.
+4. **Noise floor and gate (no calibration step):**
+   - The overall level is tracked to spot *quiet moments*. The quiet-level estimate only
+     rises while the overall level is steady, which room noise is and music isn't, and
+     never above a ceiling (default −64 dBFS).
+   - In quiet moments each band's floor settles on the room's average level, and the band
+     learns how much its noise varies. While there is sound, floors can only fall.
+   - A band lights only above its gate: floor + 3.5 × its noise spread, at least 6 dB.
+     Narrow bass bands get ~15 dB, treble 6 dB.
+   - A half-second warm-up after power-on lets floors snap to the room.
+   - Trade-off: a perfectly steady sound (a hum, a fan) is learned as background within
+     about a minute and a half, and much sooner if it only lifts the overall level a few dB.
+5. **Automatic gain:** the loudest band sets the top of a 45 dB window, which follows the
+   room's loudness: quick to rise, recovering 3 dB/s. Each band's window is at least 20 dB
+   above its gate, so noise alone can't fill it.
+6. **Silence:** a quiet moment with at most 2 bands lit for 1.5 s. Spectrum modes fade to
+   dark over about 2 s; any sound brings them back immediately.
+
+Simulated results (PC tests): quiet room lights an LED in 0.07% of frames; floors move
+0 dB over 5 minutes of loud varying music; a new fan noise is learned within 60 s.
 
 CPU use is reported over serial and on the web page, so it can be checked on the hardware.
 

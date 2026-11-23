@@ -2,17 +2,20 @@
 //
 // This file only wires the parts together. The parts live under src/:
 //   src/config/    hardware and tuning constants
+//   src/audio/     microphone input and analysis (own task on core 0)
 //   src/settings/  current settings, presets, saving to flash
 //   src/modes/     lighting and spectrum modes, and the manager that picks one
 //   src/leds/      LED output (FastLED)
-//   src/diag/      frame statistics and the serial console
+//   src/diag/      statistics, live audio view and the serial console
 //   src/util/      logging, colours, boot information
 //
 // See docs/DESIGN.md for the full design and build order.
 
 #include <Arduino.h>
 
+#include "src/audio/AudioInput.h"
 #include "src/config/Config.h"
+#include "src/diag/AudioMonitor.h"
 #include "src/diag/FrameStats.h"
 #include "src/diag/SerialConsole.h"
 #include "src/leds/LedOutput.h"
@@ -24,11 +27,14 @@
 
 static NvsSettingsStore store;
 static SettingsManager settings(store);
-static SerialConsole console(settings);
+static AudioInput audio;
+static AudioMonitor audioMonitor;
+static SerialConsole console(settings, audioMonitor);
 static ModeManager modes;
 static LedOutput leds;
 static FrameStats frameStats(config::kStatsIntervalMillis);
 
+static AudioFrame audioFrame;
 static Rgb frame[config::kNumLeds];
 static uint32_t lastFrameMicros = 0;
 static uint32_t appliedRevision = 0;
@@ -41,6 +47,7 @@ void setup() {
   store.begin();
   settings.begin();
   leds.begin();
+  audio.begin();
   frameStats.begin(millis());
 
   console.printStatus();
@@ -50,6 +57,12 @@ void setup() {
 void loop() {
   console.poll();
   settings.tick(millis());
+
+  // Audio frames arrive ~94 times a second from core 0; take the newest.
+  if (audio.latest(&audioFrame)) {
+    frameStats.recordAudio(audioFrame.dspMicros);
+    audioMonitor.onFrame(audioFrame, millis());
+  }
 
   const uint32_t nowMicros = micros();
   if (nowMicros - lastFrameMicros < config::kFrameIntervalMicros) return;

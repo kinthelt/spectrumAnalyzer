@@ -13,9 +13,11 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/util/Rgb.cpp \
 	$(SRC_DIR)/modes/ModeManager.cpp \
 	$(SRC_DIR)/modes/TwinkleMode.cpp \
-	$(SRC_DIR)/modes/SpectrumPlaceholderMode.cpp
+	$(SRC_DIR)/modes/SpectrumPlaceholderMode.cpp \
+	$(SRC_DIR)/audio/FilterBank.cpp \
+	$(SRC_DIR)/audio/LevelTracker.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests
