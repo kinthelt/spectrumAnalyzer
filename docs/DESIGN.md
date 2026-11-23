@@ -158,8 +158,9 @@ All modes take the global brightness and respect the current limit.
 | **Rainbow** | The whole strip in one colour, slowly cycling through the rainbow. |
 | **Twinkle** | Random LEDs fade in and out in the chosen colour. |
 
-Spectrum colour: the whole strip is one hue that cycles slowly through the rainbow (default
-one full cycle per minute). Each LED's brightness is its band level.
+Spectrum colour: either **rainbow cycle** (default: the whole strip is one hue that cycles
+slowly through the rainbow, one full cycle per minute) or **fixed colour** (colour A).
+Each LED's brightness is its band level.
 
 Attack, fall, hold and flash times are tuning constants in `src/config/`, set on the hardware.
 
@@ -167,7 +168,8 @@ Attack, fall, hold and flash times are tuning constants in `src/config/`, set on
 
 ## 6. Settings and presets
 
-- **Current settings:** mode, colour A, colour B, brightness, on/off.
+- **Current settings:** mode, colour A, colour B, spectrum colour (rainbow cycle or fixed),
+  brightness, on/off.
 - **Presets:** 8 slots, each a snapshot of mode, colours and brightness, saved and recalled
   from the web page.
 - **Persistence:** stored with Preferences (flash). Saved about 5 s after the last change, to
@@ -207,11 +209,14 @@ Attack, fall, hold and flash times are tuning constants in `src/config/`, set on
 
 - The strip appears as one Matter **colour light**: on/off, brightness, colour. It is paired
   once in Apple Home and once in Google Home (Matter allows several controllers).
-- Turning it on, or changing colour or brightness, from a phone or voice assistant switches
-  to Solid colour mode (or adjusts the current mode's colour/brightness, *to decide*).
-  Choosing between modes stays on the web page.
-- Needs a Matter hub in each ecosystem (Apple: HomePod or Apple TV; Google: Nest speaker or
-  display).
+- Changes from Apple Home or Google Home **adjust the current mode** and never switch modes:
+  - **On/off** turns the strip on or off.
+  - **Brightness** sets the global brightness.
+  - **Colour** sets the current mode's colour (colour A). In the spectrum modes it replaces
+    the rainbow cycle with that fixed colour; choosing the rainbow again is done on the web
+    page.
+- Choosing between modes stays on the web page.
+- Hubs: Apple TV (Apple Home) and Google Nest speaker (Google Home), both confirmed.
 
 ---
 
@@ -236,9 +241,7 @@ Each step ends with something testable on the bench.
 
 | Item | Plan |
 |---|---|
-| Matter hubs available? | Confirm with owner before step 9. |
 | Matter + WiFiManager on the same Wi-Fi radio | Build a small test sketch early, before committing to either library. |
 | Flash: Matter build size with two OTA slots in 8 MB | Check the partition scheme with a test build. |
 | Filter-bank CPU load on the S3 | Measure in step 4; fall-backs: 32 kHz sample rate or lower top frequency. |
-| What Matter brightness/colour does to spectrum modes | Decide before step 9. |
 | Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
