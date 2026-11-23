@@ -143,6 +143,7 @@ struct TrackerRig {
   AudioFrame frame;
   std::mt19937 rng{7};
   std::vector<float> noiseDb;   // per-band room noise level
+  std::vector<float> jitterDb;  // per-band frame-to-frame noise variation, +/- dB
 
   TrackerRig() {
     float centres[kBands];
@@ -150,19 +151,20 @@ struct TrackerRig {
     tracker.begin(centres);
     // Room noise roughly like the bench: about -105 dB per band.
     for (int i = 0; i < kBands; ++i) noiseDb.push_back(-105.0f);
+    jitterDb.assign(kBands, 3.0f);
   }
 
   // Runs for `seconds`, with extra per-band power from `extra(band, t)` (dB, or
   // below -200 for none). Noise fluctuates +/-3 dB frame to frame.
   template <class Extra>
   void run(double seconds, Extra extra) {
-    std::uniform_real_distribution<float> jitter(-3.0f, 3.0f);
+    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
     const int frames = static_cast<int>(seconds / kBlockSeconds);
     float power[kBands];
     for (int f = 0; f < frames; ++f) {
       const double t = f * kBlockSeconds;
       for (int i = 0; i < kBands; ++i) {
-        double p = std::pow(10.0, (noiseDb[i] + jitter(rng)) / 10.0);
+        double p = std::pow(10.0, (noiseDb[i] + jitterDb[i] * unit(rng)) / 10.0);
         const double e = extra(i, t);
         if (e > -200) p += std::pow(10.0, e / 10.0);
         power[i] = static_cast<float>(p);
@@ -206,33 +208,103 @@ TEST(tracker_goes_silent_after_sound_stops) {
   CHECK(rig.frame.silent);
 }
 
+TEST(tracker_silence_survives_room_wobble) {
+  // Real rooms wobble: on the bench the overall level swung between -72.5 and
+  // -66.6 dBFS with nothing lit. Here one rumbly low band dominates the overall
+  // level and swings +/-8 dB, which moves the overall level well past the quiet
+  // margin, while staying under that band's own (wide) noise gate.
+  TrackerRig rig;
+  rig.jitterDb.assign(kBands, 1.0f);
+  rig.noiseDb[0] = -70.0f;
+  rig.jitterDb[0] = 8.0f;
+  rig.runQuiet(15.0);
+  int silentFrames = 0, litFrames = 0, frames = 0;
+  for (int f = 0; f < static_cast<int>(30.0 / kBlockSeconds); ++f) {
+    rig.runQuiet(kBlockSeconds);
+    ++frames;
+    if (rig.frame.silent) ++silentFrames;
+    if (rig.frame.activeBands > 0) ++litFrames;
+  }
+  std::printf("      wobbling room: silent %.1f%% of frames, anything lit %.2f%%\n",
+              100.0 * silentFrames / frames, 100.0 * litFrames / frames);
+  CHECK(litFrames < frames / 100);
+  CHECK_EQ(silentFrames, frames);
+}
+
 TEST(tracker_floors_do_not_climb_during_long_music) {
+  // On the bench, music at -50 to -60 dBFS had a steady enough overall level
+  // that the old design's quiet-level estimate crept up ~0.3 dB/s and would
+  // have learned the music as noise. Music here: every band random, at a level
+  // similar to the bench, with a beat pulsing the whole spectrum +/-3 dB twice a
+  // second (real music is never steady for minutes on end).
   TrackerRig rig;
   rig.runQuiet(10.0);
   double before = 0;
   for (int i = 0; i < kBands; ++i) before += rig.tracker.floorDb(i);
-  // Five minutes of loud, constantly varying "music" in every band.
+  const float quietBefore = rig.frame.quietRefDb;
   std::mt19937 rng(3);
-  std::uniform_real_distribution<float> loud(-65.0f, -45.0f);
-  rig.run(300.0, [&](int, double) { return static_cast<double>(loud(rng)); });
+  std::uniform_real_distribution<float> music(-85.0f, -70.0f);
+  rig.run(300.0, [&](int, double t) {
+    const double beat = std::fmod(t * 2.0, 1.0) < 0.25 ? 3.0 : -3.0;
+    return static_cast<double>(music(rng)) + beat;
+  });
   double after = 0;
   for (int i = 0; i < kBands; ++i) after += rig.tracker.floorDb(i);
   const double riseDb = (after - before) / kBands;
-  std::printf("      average floor rise over 5 min of music: %.1f dB\n", riseDb);
+  std::printf("      5 min of music: floors moved %.1f dB, quiet level moved %.1f dB\n", riseDb,
+              rig.frame.quietRefDb - quietBefore);
   CHECK(riseDb < 3.0);
+  CHECK(rig.frame.quietRefDb - quietBefore < 2.0f);
   CHECK(rig.frame.activeBands > kBands / 2);   // music still shows
+  CHECK(!rig.frame.silent);
 }
 
-TEST(tracker_learns_a_new_steady_noise) {
+TEST(tracker_recovers_when_music_was_playing_at_power_on) {
+  // Switched on at the plug with music already playing: the warm-up hears music,
+  // not the room. After the first pause the floors find the room again and the
+  // music shows normally.
+  TrackerRig rig;
+  std::mt19937 rng(5);
+  std::uniform_real_distribution<float> music(-85.0f, -70.0f);
+  auto song = [&](int, double t) {
+    return static_cast<double>(music(rng)) + (std::fmod(t * 2.0, 1.0) < 0.25 ? 3.0 : -3.0);
+  };
+  rig.run(30.0, song);
+  const int litAtStart = rig.frame.activeBands;
+  rig.runQuiet(5.0);   // pause between songs
+  rig.run(10.0, song);
+  std::printf("      music from power-on: %d bands lit; after a pause: %d\n", litAtStart,
+              rig.frame.activeBands);
+  CHECK(rig.frame.activeBands > kBands / 2);
+}
+
+TEST(tracker_learns_a_new_noise_on_request) {
+  // A fan starts: every band 12 dB louder. It isn't learned by itself (the
+  // tracker can't tell it from steady music), so it shows until asked to learn.
   TrackerRig rig;
   rig.runQuiet(10.0);
-  for (float& n : rig.noiseDb) n += 12.0f;   // a fan starts: noise 12 dB louder
-  rig.runQuiet(3.0);
-  const bool litAtFirst = rig.frame.activeBands > config::kSilenceMaxActiveBands;
+  for (float& n : rig.noiseDb) n += 12.0f;
   rig.runQuiet(60.0);
-  std::printf("      fan noise lit %d bands at first; after 60 s: %d\n",
-              litAtFirst ? 1 : 0, rig.frame.activeBands);
+  const int litAfterAMinute = rig.frame.activeBands;
+  rig.tracker.learnNoise();
+  rig.runQuiet(config::kLearnNoiseSeconds + 2.0);
+  std::printf("      fan noise: %d bands lit after 60 s; after learning: %d\n", litAfterAMinute,
+              rig.frame.activeBands);
+  CHECK(litAfterAMinute > kBands / 2);
+  CHECK(!rig.tracker.learningNoise());
   CHECK(rig.frame.activeBands <= config::kSilenceMaxActiveBands);
+  CHECK(rig.frame.silent);
+}
+
+TEST(tracker_hum_in_a_quiet_room_is_learned) {
+  // A steady hum that lights just one band (a transformer buzz) is learned by
+  // itself: the quiet-level estimate can creep up while almost nothing is lit.
+  TrackerRig rig;
+  rig.runQuiet(10.0);
+  rig.run(3.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
+  CHECK(rig.frame.level[20] > 0.9f);
+  rig.run(90.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
+  CHECK(rig.frame.level[20] == 0.0f);
   CHECK(rig.frame.silent);
 }
 
@@ -262,21 +334,6 @@ TEST(tracker_gain_follows_loudness) {
     peak = std::fmax(peak, rig.frame.level[50]);
   }
   CHECK(peak > 0.9f);
-}
-
-TEST(tracker_learns_a_steady_hum_as_noise) {
-  // A constant hum (perfectly steady level) loud enough to raise the overall level
-  // ~20 dB is shown at first, then, like any steady background noise, learned
-  // and dropped. (Music isn't steady, so it isn't learned; see the test above.)
-  TrackerRig rig;
-  rig.runQuiet(10.0);
-  rig.run(3.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
-  CHECK(rig.frame.level[20] > 0.9f);
-  rig.run(20.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
-  CHECK(rig.frame.level[20] > 0.9f);   // still shown after 20 s
-  rig.run(70.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
-  CHECK(rig.frame.level[20] == 0.0f);  // learned within about a minute and a half
-  CHECK(rig.frame.silent);
 }
 
 // ---- End to end: synthetic microphone -> filter bank -> tracker ------------------------

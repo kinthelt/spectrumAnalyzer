@@ -46,16 +46,26 @@ constexpr float kNoiseSpreadSeconds = 1.0f;     // how quickly each band's noise
 constexpr float kWarmupSeconds = 0.5f;          // after boot: floors snap to the room, LEDs stay dark
 constexpr float kFloorFallSeconds = 0.5f;       // during sound, a floor can only fall, this fast
 constexpr float kFloorAdaptSeconds = 3.0f;      // in quiet moments, floors settle on the room level
-// "Quiet moment" detection on the overall level, used to learn the noise floors:
-constexpr float kQuietMarginDb = 4.0f;          // within this of the quietest recent level
-constexpr float kQuietRiseDbPerSecond = 0.5f;   // quietest-level estimate creeps up this slowly,
-constexpr float kSteadyDb = 1.5f;               // but only while the overall level is this steady
-// ...and never above this overall level (dBFS). Bench: quiet room -75, music -70 to -45.
-// Too low and a new noise (fan) is never learned; too high and quiet music is.
-constexpr float kQuietCeilingDb = -64.0f;
-// Silence: a quiet moment with at most this many bands lit, lasting this long.
+// Noise floors are learned automatically only during silence, so music is never
+// mistaken for noise. A new noise loud enough to light bands (a fan starting) is
+// learned on request: "learn" in Serial Monitor (later a web-page button) learns
+// the room for this long. Keep the room free of music while it runs.
+constexpr float kLearnNoiseSeconds = 10.0f;
+constexpr float kSteadyDb = 1.5f;               // "steady": overall level wobbling less than this
+// No band's noise floor is ever above this (tilted dB). Keeps music from being
+// learned as noise if it is already playing at power-on. Bench room: ~-105 to -90.
+constexpr float kFloorCeilingDb = -78.0f;
+// "Quiet moment" detection on the overall level, used for silence:
+constexpr float kQuietMarginDb = 6.0f;          // within this of the quietest recent level
+constexpr float kQuietRiseDbPerSecond = 0.5f;   // estimate creeps up this fast, only while
+                                                // steady and with almost nothing lit
+constexpr float kQuietCeilingDb = -64.0f;       // and never above this overall level (dBFS)
+// Silence starts after kSilenceSeconds of frames with nothing lit, or at most
+// kSilenceMaxActiveBands lit during a quiet moment. It ends when more bands light,
+// or the overall level rises kSilenceExitDb above the quiet margin.
 constexpr int kSilenceMaxActiveBands = 2;
 constexpr float kSilenceSeconds = 1.5f;
+constexpr float kSilenceExitDb = 10.0f;
 
 // ---- Audio task --------------------------------------------------------------
 constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1

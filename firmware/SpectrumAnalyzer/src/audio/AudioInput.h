@@ -28,6 +28,10 @@ class AudioInput {
 
   const FilterBank& filterBank() const { return bank_; }
 
+  // Asks the audio task to learn the room's noise for kLearnNoiseSeconds (for a
+  // new steady noise such as a fan). Safe to call from any core.
+  void requestNoiseLearning() { learnRequested_.store(true); }
+
   // Count of I2S reads that failed or came back short (should stay 0).
   uint32_t readErrors() const { return readErrors_.load(); }
 
@@ -46,4 +50,5 @@ class AudioInput {
   int32_t raw_[config::kAudioBlockSize];
   float samples_[config::kAudioBlockSize];
   std::atomic<uint32_t> readErrors_{0};   // written on core 0, read on core 1
+  std::atomic<bool> learnRequested_{false};   // set on core 1, taken on core 0
 };

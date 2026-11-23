@@ -41,6 +41,8 @@ void SerialConsole::printHelp() {
       "  recall <1-8>           load a preset\n"
       "  delete <1-8>           delete a preset\n"
       "  audio                  start/stop the live audio view (5 lines a second)\n"
+      "  learn                  learn the room's noise for 10 s (after a new steady noise,\n"
+      "                         e.g. a fan; keep music off while it runs)\n"
       "  reset                  erase everything (asks to confirm)");
 }
 
@@ -145,6 +147,9 @@ void SerialConsole::runLine(char* line) {
   } else if (std::strcmp(cmd, "audio") == 0) {
     audioMonitor_.setEnabled(!audioMonitor_.enabled());
     Serial.printf("Audio view %s\n", audioMonitor_.enabled() ? "on (type 'audio' to stop)" : "off");
+  } else if (std::strcmp(cmd, "learn") == 0) {
+    audio_.requestNoiseLearning();
+    Serial.println("Learning the room's noise for 10 s - keep music off");
   } else if (std::strcmp(cmd, "reset") == 0) {
     if (arg1 != nullptr && std::strcmp(arg1, "yes") == 0 && wasArmed) {
       settings_.factoryReset();

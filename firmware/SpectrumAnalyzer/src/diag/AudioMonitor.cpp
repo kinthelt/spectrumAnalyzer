@@ -26,7 +26,7 @@ void AudioMonitor::onFrame(const AudioFrame& frame, uint32_t nowMillis) {
   }
   bar[kColumns] = '\0';
 
+  const char* state = frame.learningNoise ? "LEARN" : (frame.silent ? "SILENT" : "");
   Serial.printf("%6.1f dBFS  ref %6.1f  quiet %6.1f  lit %3u %-6s |%s|\n", frame.broadbandDb,
-                frame.agcRefDb, frame.quietRefDb, frame.activeBands,
-                frame.silent ? "SILENT" : "", bar);
+                frame.agcRefDb, frame.quietRefDb, frame.activeBands, state, bar);
 }

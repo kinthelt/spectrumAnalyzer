@@ -135,26 +135,34 @@ C++ with no Arduino headers, so it is tested on a PC. Hardware code stays thin.
 3. **Level:** smoothed power per band → dB, plus a treble boost (default +3 dB/octave about
    1 kHz) because music has less energy up there.
 4. **Noise floor and gate (no calibration step):**
-   - The overall level is tracked to spot *quiet moments*. The quiet-level estimate only
-     rises while the overall level is steady, which room noise is and music isn't, and
-     never above a ceiling (default −64 dBFS).
-   - In quiet moments each band's floor settles on the room's average level, and the band
-     learns how much its noise varies. While there is sound, floors can only fall.
+   - Each band's floor and noise spread are learned **only during silence**, when the room
+     can be measured without bias. During sound, floors can only fall. Music is never
+     learned as noise.
    - A band lights only above its gate: floor + 3.5 × its noise spread, at least 6 dB.
      Narrow bass bands get ~15 dB, treble 6 dB.
-   - A half-second warm-up after power-on lets floors snap to the room.
-   - Trade-off: a perfectly steady sound (a hum, a fan) is learned as background within
-     about a minute and a half, and much sooner if it only lifts the overall level a few dB.
+   - A steady hum lighting only a band or two is learned by itself. A new noise that lights
+     many bands (a fan) can't be told apart from steady music, so it's learned on request:
+     `learn` in Serial Monitor, later a web-page button.
+   - Floors are capped (−78 dB per band) and a half-second warm-up after power-on lets them
+     find the room.
+   - Known limitation: if music is already playing at power-on, the strip may stay dark
+     until the first pause (e.g. between songs), then recovers fully.
 5. **Automatic gain:** the loudest band sets the top of a 45 dB window, which follows the
    room's loudness: quick to rise, recovering 3 dB/s. Each band's window is at least 20 dB
    above its gate, so noise alone can't fill it.
-6. **Silence:** a quiet moment with at most 2 bands lit for 1.5 s. Spectrum modes fade to
-   dark over about 2 s; any sound brings them back immediately.
+6. **Silence:** after power-on it must be earned: 1.5 s with nothing lit (and the room
+   plausibly quiet), or at most 2 bands lit during a quiet moment. Once silent, wobbles in
+   the room's level don't end it; only more bands lighting or a clearly louder room does.
+   Spectrum modes fade to dark over about 2 s; any sound brings them back immediately.
 
-Simulated results (PC tests): quiet room lights an LED in 0.07% of frames; floors move
-0 dB over 5 minutes of loud varying music; a new fan noise is learned within 60 s.
+Simulated results (PC tests): quiet room lights an LED in 0.07% of frames; a room whose
+level wobbles several dB stays silent 100% of the time; floors move 0.1 dB over 5 minutes
+of music; music already playing at power-on shows fully after the first pause.
 
-CPU use is reported over serial and on the web page, so it can be checked on the hardware.
+Measured on the hardware (core 3.3.11): analysis takes 4.5 ms of each 10.7 ms block,
+**43% of core 0**; 93.6 blocks/s; LEDs unaffected at 99.8 fps.
+
+CPU use is reported over serial (and later on the web page).
 
 ---
 
@@ -256,6 +264,6 @@ Each step ends with something testable on the bench.
 |---|---|
 | Matter + WiFiManager on the same Wi-Fi radio | Build a small test sketch early, before committing to either library. |
 | Flash: Matter build size with two OTA slots in 8 MB | Check the partition scheme with a test build. |
-| Filter-bank CPU load on the S3 | Measure in step 4; fall-backs: 32 kHz sample rate or lower top frequency. |
+| Filter-bank CPU load on the S3 | Measured: 43% of core 0. Wi-Fi also runs on core 0; re-check in step 6. |
 | Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
 | `E cache: esp_cache_msync(113): invalid addr or null pointer` logged once at boot during FastLED start-up (core 3.3.11, FastLED 3.10.10), with or without PSRAM | No visible effect so far. Re-check in step 4 when audio DMA runs alongside the LED driver. |

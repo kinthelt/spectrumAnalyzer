@@ -2,12 +2,11 @@
 //
 //   power -> dB + treble tilt -> per-band noise floor -> automatic gain -> 0..1
 //
-// Noise floors are learned without a calibration step: the overall level is
-// tracked to spot quiet moments, and only then do the floors settle on the
-// current band levels. While there is sound they can only fall. The quiet-level
-// estimate itself only rises while the overall level is steady, which noise is
-// and music isn't. So music can't drag the floors up, while a new steady noise
-// (a fan starting, a hum) is learned within about half a minute.
+// Noise floors are learned without a calibration step, while it is silent
+// (nothing standing out for a moment), when the noise can be measured without
+// bias. During sound, floors can only fall, so music is never learned as noise.
+// A new noise loud enough to light bands (a fan) is learned on request with
+// learnNoise(); a steady hum lighting only a band or two is learned by itself.
 //
 // Each band also learns how much its noise varies, and its gate sits a few
 // standard deviations above the average, so noise doesn't flicker the LEDs.
@@ -30,6 +29,10 @@ class LevelTracker {
   void update(const float* bandPower, float dtSeconds, AudioFrame* out);
 
   float floorDb(int band) const { return floorDb_[band]; }
+
+  // Learn the room's noise for kLearnNoiseSeconds, whatever is playing.
+  void learnNoise() { learnSecondsLeft_ = config::kLearnNoiseSeconds; }
+  bool learningNoise() const { return learnSecondsLeft_ > 0; }
   float gateDb(int band) const;   // floor plus the band's noise margin
 
  private:
@@ -40,5 +43,8 @@ class LevelTracker {
   float quietRefDb_ = config::kQuietCeilingDb;
   float agcRefDb_ = -120;
   float silentSeconds_ = 0;
+  bool silent_ = true;
+  uint16_t lastActive_ = 0;
+  float learnSecondsLeft_ = 0;
   float warmupSeconds_ = 0;   // counts up to kWarmupSeconds after begin()
 };

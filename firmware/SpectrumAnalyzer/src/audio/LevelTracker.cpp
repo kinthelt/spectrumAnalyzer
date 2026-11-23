@@ -34,6 +34,9 @@ void LevelTracker::begin(const float* centreHz) {
   quietRefDb_ = config::kQuietCeilingDb;
   agcRefDb_ = -120.0f;
   silentSeconds_ = 0;
+  silent_ = false;   // must be earned after warm-up
+  lastActive_ = 0;
+  learnSecondsLeft_ = 0;
   warmupSeconds_ = 0;
 }
 
@@ -47,6 +50,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
       total += bandPower[i];
       const float db = toDb(bandPower[i]) + tiltDb_[i];
       floorDb_[i] += (db - floorDb_[i]) * approach(dt, 0.1f);
+      if (floorDb_[i] > config::kFloorCeilingDb) floorDb_[i] = config::kFloorCeilingDb;
       out->level[i] = 0.0f;
     }
     const float broadbandDb = toDb(total);
@@ -72,13 +76,20 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
       (std::fabs(broadFastDb_ - broadSlowDb_) - broadDeviationDb_) * approach(dt, 1.0f);
   const bool steady = broadDeviationDb_ < config::kSteadyDb;
 
+  // The quiet-level estimate follows the overall level down quickly, and creeps
+  // up only while steady with almost nothing lit (last frame), so music can't
+  // drag it up.
   if (broadbandDb < quietRefDb_) {
     quietRefDb_ += (broadbandDb - quietRefDb_) * approach(dt, 0.2f);
-  } else if (steady) {
+  } else if (steady && lastActive_ <= config::kSilenceMaxActiveBands) {
     quietRefDb_ += config::kQuietRiseDbPerSecond * dt;
   }
   if (quietRefDb_ > config::kQuietCeilingDb) quietRefDb_ = config::kQuietCeilingDb;
   const bool quietMoment = broadbandDb < quietRefDb_ + config::kQuietMarginDb;
+
+  // Learn floors while silent (decided last frame), or on request.
+  const bool learnFloors = silent_ || learnSecondsLeft_ > 0;
+  if (learnSecondsLeft_ > 0) learnSecondsLeft_ -= dt;
 
   // 2. Per-band level in dB with treble tilt; noise floors; loudest band.
   float bandDb[kBands];
@@ -88,10 +99,11 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
     bandDb[i] = db;
     if (db > loudestDb) loudestDb = db;
 
-    // Quiet moment: settle on the average room level, both ways. Otherwise only
-    // fall, so sound can never push a floor up.
+    // Silence (or a learn request): settle on the average room level, both ways.
+    // During sound, only fall (and only for a clear drop), so sound can never
+    // push a floor up.
     float& floor = floorDb_[i];
-    if (quietMoment) {
+    if (learnFloors) {
       float deviation = db - floor;
       floor += deviation * approach(dt, config::kFloorAdaptSeconds);
       // Spread of the noise around the floor. Clipping each frame's deviation
@@ -101,8 +113,12 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
       noiseVarDb2_[i] +=
           (deviation * deviation - noiseVarDb2_[i]) * approach(dt, config::kNoiseSpreadSeconds);
     } else if (db < floor) {
+      // During sound, follow the band's dips down. This matters when music was
+      // already playing at power-on and the warm-up mistook it for the room.
+      // Any low bias this leaves is corrected at the next silence.
       floor += (db - floor) * approach(dt, config::kFloorFallSeconds);
     }
+    if (floor > config::kFloorCeilingDb) floor = config::kFloorCeilingDb;
   }
 
   // 3. Automatic gain: the top of the window follows the loudest band, quickly
@@ -133,16 +149,31 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
     out->level[i] = level;
   }
 
-  // 5. Silence.
-  if (quietMoment && active <= config::kSilenceMaxActiveBands) {
-    silentSeconds_ += dt;
+  // 5. Silence. Entering needs a sustained run of quiet frames; once silent, small
+  //    wobbles in the room's level don't end it, only real sound does.
+  if (silent_) {
+    const bool loud = broadbandDb > quietRefDb_ + config::kQuietMarginDb + config::kSilenceExitDb;
+    if (active > config::kSilenceMaxActiveBands || loud) {
+      silent_ = false;
+      silentSeconds_ = 0;
+    }
   } else {
-    silentSeconds_ = 0;
+    // Nothing lit counts as silence only if the room is plausibly quiet (so music
+    // that the floors wrongly learned at power-on doesn't count); a band or two
+    // lit counts during a quiet moment.
+    const bool plausiblyQuiet = broadbandDb < config::kQuietCeilingDb + config::kQuietMarginDb;
+    const bool quietFrame = (active == 0 && plausiblyQuiet) ||
+                            (quietMoment && active <= config::kSilenceMaxActiveBands);
+    silentSeconds_ = quietFrame ? silentSeconds_ + dt : 0.0f;
+    if (silentSeconds_ >= config::kSilenceSeconds) silent_ = true;
   }
+
+  lastActive_ = active;
 
   out->broadbandDb = broadbandDb;
   out->agcRefDb = agcRefDb_;
   out->quietRefDb = quietRefDb_;
   out->activeBands = active;
-  out->silent = silentSeconds_ >= config::kSilenceSeconds;
+  out->silent = silent_;
+  out->learningNoise = learnSecondsLeft_ > 0;
 }

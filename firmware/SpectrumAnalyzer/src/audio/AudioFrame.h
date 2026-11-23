@@ -15,7 +15,8 @@ struct AudioFrame {
   float agcRefDb = -120;      // top of the display window (loudest band, tilted dB)
   float quietRefDb = -120;    // estimate of the room's quiet level, dBFS
   uint16_t activeBands = 0;   // bands with level > 0
-  bool silent = true;         // too few active bands for kSilenceSeconds
+  bool silent = true;         // see kSilenceSeconds in Config.h
+  bool learningNoise = false; // a "learn room noise" request is running
 
   uint32_t sequence = 0;      // increments with every frame
   uint32_t dspMicros = 0;     // time spent analysing this block (filled by AudioInput)

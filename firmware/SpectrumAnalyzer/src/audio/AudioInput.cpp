@@ -88,6 +88,7 @@ void AudioInput::run() {
 
     float power[FilterBank::kBands];
     for (int i = 0; i < FilterBank::kBands; ++i) power[i] = bank_.power(i);
+    if (learnRequested_.exchange(false)) tracker_.learnNoise();
     tracker_.update(power, kBlockSeconds, &frame_);
 
     frame_.dspMicros = micros() - start;

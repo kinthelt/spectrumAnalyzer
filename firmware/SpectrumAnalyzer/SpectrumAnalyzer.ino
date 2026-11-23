@@ -29,7 +29,7 @@ static NvsSettingsStore store;
 static SettingsManager settings(store);
 static AudioInput audio;
 static AudioMonitor audioMonitor;
-static SerialConsole console(settings, audioMonitor);
+static SerialConsole console(settings, audio, audioMonitor);
 static ModeManager modes;
 static LedOutput leds;
 static FrameStats frameStats(config::kStatsIntervalMillis);
