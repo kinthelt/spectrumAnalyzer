@@ -16,7 +16,9 @@ Rainbow and Twinkle work. The two spectrum modes still show a placeholder until 
 
 ## Building the firmware (Arduino IDE)
 
-1. **Boards Manager:** install **esp32 by Espressif Systems**, version 3.x.
+1. **Boards Manager:** install **esp32 by Espressif Systems**, version **3.3.x**. Don't
+   update to 4.x yet: 4.0 moves to ESP-IDF 6.1 and hasn't been tested with this project
+   or FastLED.
 2. **Library Manager:** install **FastLED**, version 3.9 or newer.
 3. Open `firmware/SpectrumAnalyzer/SpectrumAnalyzer.ino`.
 4. **Tools** menu:
