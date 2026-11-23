@@ -245,3 +245,4 @@ Each step ends with something testable on the bench.
 | Flash: Matter build size with two OTA slots in 8 MB | Check the partition scheme with a test build. |
 | Filter-bank CPU load on the S3 | Measure in step 4; fall-backs: 32 kHz sample rate or lower top frequency. |
 | Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
+| `E cache: esp_cache_msync(113): invalid addr or null pointer` logged once at boot during FastLED start-up (core 3.3.11, FastLED 3.10.10), with or without PSRAM | No visible effect so far. Re-check in step 4 when audio DMA runs alongside the LED driver. |

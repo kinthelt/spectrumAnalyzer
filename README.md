@@ -10,8 +10,9 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 2 of 10: settings and 8 presets saved to flash, changed from Serial Monitor
-(type `help`). The strip still shows a bench test pattern, coloured by colour A.
+Build step 3 of 10: lighting modes Solid, Gradient, Rainbow and Twinkle. Settings and 8
+presets are saved to flash and changed from Serial Monitor (type `help`). The two spectrum
+modes show a placeholder comet until the audio pipeline is built (steps 4 and 5).
 
 ## Building the firmware (Arduino IDE)
 
@@ -27,7 +28,9 @@ Build step 2 of 10: settings and 8 presets saved to flash, changed from Serial M
    | PSRAM | OPI PSRAM |
    | USB CDC On Boot | Enabled (needed when using the board's native USB port) |
 
-5. Upload, then open Serial Monitor at 115200 baud.
+5. Upload, then open Serial Monitor at 115200 baud with line ending set to "Newline".
+
+Last tested with esp32 core 3.3.11 and FastLED 3.10.10.
 
 Hardware constants (pins, strip length, current limit) are in
 `firmware/SpectrumAnalyzer/src/config/Config.h`.

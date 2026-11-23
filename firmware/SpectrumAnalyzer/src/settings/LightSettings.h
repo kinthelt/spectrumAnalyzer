@@ -5,12 +5,7 @@
 #include <cstdint>
 
 #include "../config/Config.h"
-
-struct Rgb {
-  uint8_t r = 0, g = 0, b = 0;
-  bool operator==(const Rgb& o) const { return r == o.r && g == o.g && b == o.b; }
-  bool operator!=(const Rgb& o) const { return !(*this == o); }
-};
+#include "../util/Rgb.h"
 
 // Numbers are stored in flash: never renumber, only append.
 enum class Mode : uint8_t {

@@ -30,4 +30,14 @@ constexpr uint8_t kDefaultBrightness = 64;   // 0-255, global brightness
 constexpr uint32_t kFrameIntervalMicros = 10000;   // 100 frames per second target
 constexpr uint32_t kStatsIntervalMillis = 5000;    // how often stats go to serial
 
+// ---- Lighting modes ----------------------------------------------------------
+// Rainbow (and the spectrum modes' rainbow cycle): one full trip round the colour wheel.
+constexpr uint32_t kRainbowCycleMillis = 60000;
+
+// Twinkle: each dark LED lights up at random, on average this often per second...
+constexpr float kTwinkleStartsPerLedPerSecond = 0.08f;
+// ...fading in and out over these times. Average lit share ~ rate x (in + out) ~ 13%.
+constexpr float kTwinkleFadeInSeconds = 0.4f;
+constexpr float kTwinkleFadeOutSeconds = 1.2f;
+
 }  // namespace config

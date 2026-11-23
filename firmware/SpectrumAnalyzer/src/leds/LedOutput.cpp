@@ -17,6 +17,12 @@ void LedOutput::setBrightness(uint8_t brightness) {
   FastLED.setBrightness(brightness_);
 }
 
+void LedOutput::write(const Rgb* frame, int count) {
+  if (count > kSize) count = kSize;
+  for (int i = 0; i < count; ++i) leds_[i] = CRGB(frame[i].r, frame[i].g, frame[i].b);
+  for (int i = count; i < kSize; ++i) leds_[i] = CRGB::Black;
+}
+
 void LedOutput::show() {
   const uint32_t start = micros();
   FastLED.show();

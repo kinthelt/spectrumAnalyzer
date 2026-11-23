@@ -9,9 +9,13 @@ CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -O1 -g -I$(SRC_DIR) -I.
 FIRMWARE_SOURCES := \
 	$(SRC_DIR)/settings/LightSettings.cpp \
 	$(SRC_DIR)/settings/SettingsCodec.cpp \
-	$(SRC_DIR)/settings/SettingsManager.cpp
+	$(SRC_DIR)/settings/SettingsManager.cpp \
+	$(SRC_DIR)/util/Rgb.cpp \
+	$(SRC_DIR)/modes/ModeManager.cpp \
+	$(SRC_DIR)/modes/TwinkleMode.cpp \
+	$(SRC_DIR)/modes/SpectrumPlaceholderMode.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests

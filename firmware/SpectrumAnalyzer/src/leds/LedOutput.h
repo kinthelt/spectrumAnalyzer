@@ -5,6 +5,7 @@
 #include <FastLED.h>
 
 #include "../config/Config.h"
+#include "../util/Rgb.h"
 
 class LedOutput {
  public:
@@ -13,8 +14,8 @@ class LedOutput {
   // Registers the strip with FastLED, applies the power limit and clears the strip.
   void begin();
 
-  // The frame being built. Write colours here, then call show().
-  CRGB* pixels() { return leds_; }
+  // Copies a frame rendered by the modes into the output buffer. Call show() after.
+  void write(const Rgb* frame, int count);
 
   void setBrightness(uint8_t brightness);
   uint8_t brightness() const { return brightness_; }

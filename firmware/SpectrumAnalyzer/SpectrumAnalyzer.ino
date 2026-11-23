@@ -3,19 +3,20 @@
 // This file only wires the parts together. The parts live under src/:
 //   src/config/    hardware and tuning constants
 //   src/settings/  current settings, presets, saving to flash
+//   src/modes/     lighting and spectrum modes, and the manager that picks one
 //   src/leds/      LED output (FastLED)
-//   src/diag/      bench test pattern, frame statistics, serial console
-//   src/util/      logging and boot information
+//   src/diag/      frame statistics and the serial console
+//   src/util/      logging, colours, boot information
 //
 // See docs/DESIGN.md for the full design and build order.
 
 #include <Arduino.h>
 
 #include "src/config/Config.h"
-#include "src/diag/BenchTest.h"
 #include "src/diag/FrameStats.h"
 #include "src/diag/SerialConsole.h"
 #include "src/leds/LedOutput.h"
+#include "src/modes/ModeManager.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
 #include "src/util/Log.h"
@@ -24,9 +25,11 @@
 static NvsSettingsStore store;
 static SettingsManager settings(store);
 static SerialConsole console(settings);
+static ModeManager modes;
 static LedOutput leds;
-static BenchTest benchTest;
 static FrameStats frameStats(config::kStatsIntervalMillis);
+
+static Rgb frame[config::kNumLeds];
 static uint32_t lastFrameMicros = 0;
 static uint32_t appliedRevision = 0;
 
@@ -38,7 +41,6 @@ void setup() {
   store.begin();
   settings.begin();
   leds.begin();
-  benchTest.start(millis());
   frameStats.begin(millis());
 
   console.printStatus();
@@ -60,12 +62,8 @@ void loop() {
   }
 
   const uint32_t nowMillis = millis();
-  if (s.on) {
-    benchTest.render(leds.pixels(), LedOutput::kSize, nowMillis,
-                     CRGB(s.colourA.r, s.colourA.g, s.colourA.b));
-  } else {
-    fill_solid(leds.pixels(), LedOutput::kSize, CRGB::Black);
-  }
+  modes.render(s, nowMillis, frame, config::kNumLeds);
+  leds.write(frame, config::kNumLeds);
   leds.show();
 
   frameStats.recordFrame(leds.lastShowMicros());
