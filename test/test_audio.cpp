@@ -259,6 +259,29 @@ TEST(tracker_floors_do_not_climb_during_long_music) {
   CHECK(!rig.frame.silent);
 }
 
+TEST(tracker_silent_again_after_music_stops) {
+  // Bench report: after the music stopped, SILENT never came back. Real music
+  // leaves some bands empty (lowest bass, top treble); there the room's own noise
+  // wobbles under the music, and floors must not sink into those dips.
+  TrackerRig rig;
+  rig.runQuiet(10.0);
+  CHECK(rig.frame.silent);
+  std::mt19937 rng(9);
+  std::uniform_real_distribution<float> music(-85.0f, -70.0f);
+  rig.run(120.0, [&](int band, double t) {
+    if (band < 15 || band > 125) return -1000.0;   // no music at the extremes
+    return static_cast<double>(music(rng)) + (std::fmod(t * 2.0, 1.0) < 0.25 ? 3.0 : -3.0);
+  });
+  CHECK(!rig.frame.silent);
+  rig.runQuiet(5.0);
+  std::printf("      5 s after the music stopped: silent=%d, %d bands lit\n",
+              rig.frame.silent ? 1 : 0, rig.frame.activeBands);
+  CHECK(rig.frame.silent);
+  rig.runQuiet(30.0);
+  CHECK(rig.frame.silent);
+  CHECK_EQ(rig.frame.activeBands, 0);
+}
+
 TEST(tracker_recovers_when_music_was_playing_at_power_on) {
   // Switched on at the plug with music already playing: the warm-up hears music,
   // not the room. After the first pause the floors find the room again and the
@@ -394,3 +417,59 @@ TEST(end_to_end_tone_in_a_quiet_room) {
   runFor(config::kSilenceSeconds + 1.5, 0, 0);
   CHECK(frame.silent);
 }
+
+TEST(end_to_end_silent_again_after_music_stops) {
+  // Same bench report, with realistic noise from the real filter bank: in narrow
+  // bands, noise dips deep and often, which must not drag floors down.
+  FilterBank bank = makeBank();
+  LevelTracker tracker;
+  float centres[kBands];
+  for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
+  tracker.begin(centres);
+  AudioFrame frame;
+
+  std::mt19937 rng(21);
+  std::normal_distribution<float> gauss(0, 1);
+  std::uniform_real_distribution<float> pick(200.0f, 4000.0f);
+  const float roomNoise = std::pow(10.0f, -75.0f / 20.0f);
+  float block[kBlock];
+  long n = 0;
+  double notes[4] = {440, 660, 880, 1320};
+  auto runFor = [&](double seconds, bool music) {
+    const int blocks = static_cast<int>(seconds / kBlockSeconds);
+    for (int b = 0; b < blocks; ++b) {
+      if (music && b % 23 == 0)   // new chord every ~0.25 s
+        for (double& f : notes) f = pick(rng);
+      const double beat = (b % 47) < 12 ? 1.0 : 0.4;   // a pulse twice a second
+      for (int s = 0; s < kBlock; ++s, ++n) {
+        float x = roomNoise * gauss(rng);
+        if (music)
+          for (double f : notes) x += static_cast<float>(0.01 * beat * std::sin(2 * M_PI * f * n / kFs));
+        block[s] = x;
+      }
+      bank.process(block);
+      float power[kBands];
+      for (int i = 0; i < kBands; ++i) power[i] = bank.power(i);
+      tracker.update(power, kBlockSeconds, &frame);
+    }
+  };
+
+  runFor(15.0, false);
+  CHECK(frame.silent);
+  runFor(120.0, true);
+  CHECK(!frame.silent);
+  runFor(5.0, false);
+  std::printf("      real filters: 5 s after the music stopped: silent=%d, %d bands lit\n",
+              frame.silent ? 1 : 0, frame.activeBands);
+  CHECK(frame.silent);
+  int litFrames = 0, frames = 0;
+  for (int f = 0; f < static_cast<int>(20.0 / kBlockSeconds); ++f) {
+    runFor(kBlockSeconds, false);
+    ++frames;
+    if (frame.activeBands > 0) ++litFrames;
+  }
+  std::printf("      then any LED lit in %.2f%% of frames\n", 100.0 * litFrames / frames);
+  CHECK(frame.silent);
+  CHECK(litFrames < frames / 100);
+}
+
