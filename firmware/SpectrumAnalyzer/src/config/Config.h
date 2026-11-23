@@ -44,7 +44,6 @@ constexpr float kNoiseGateSigmas = 3.5f;
 constexpr float kNoiseMarginMinDb = 6.0f;
 constexpr float kNoiseSpreadSeconds = 1.0f;     // how quickly each band's noise spread is learned
 constexpr float kWarmupSeconds = 0.5f;          // after boot: floors snap to the room, LEDs stay dark
-constexpr float kFloorFallSeconds = 0.5f;       // during sound, a floor can only fall, this fast
 constexpr float kFloorAdaptSeconds = 3.0f;      // in quiet moments, floors settle on the room level
 // Noise floors are learned automatically only during silence, so music is never
 // mistaken for noise. A new noise loud enough to light bands (a fan starting) is

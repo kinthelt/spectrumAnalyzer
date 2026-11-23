@@ -51,6 +51,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
       const float db = toDb(bandPower[i]) + tiltDb_[i];
       floorDb_[i] += (db - floorDb_[i]) * approach(dt, 0.1f);
       if (floorDb_[i] > config::kFloorCeilingDb) floorDb_[i] = config::kFloorCeilingDb;
+      smoothDb_[i] = floorDb_[i];
       out->level[i] = 0.0f;
     }
     const float broadbandDb = toDb(total);
@@ -100,10 +101,16 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
     if (db > loudestDb) loudestDb = db;
 
     // Silence (or a learn request): settle on the average room level, both ways.
-    // During sound, only fall (and only for a clear drop), so sound can never
-    // push a floor up.
     float& floor = floorDb_[i];
-    if (learnFloors) {
+    // The band's level averaged over about a second, for spotting a floor that
+    // is clearly too high (single frames of noise dip too deep to trust).
+    smoothDb_[i] += (db - smoothDb_[i]) * approach(dt, 1.0f);
+
+    if (learnFloors && smoothDb_[i] < floor - config::kNoiseMarginMinDb) {
+      // Floor clearly too high (e.g. music was playing at power-on): drop to the
+      // room level quickly, and don't count the drop as noise spread.
+      floor += (smoothDb_[i] - floor) * approach(dt, 0.3f);
+    } else if (learnFloors) {
       float deviation = db - floor;
       floor += deviation * approach(dt, config::kFloorAdaptSeconds);
       // Spread of the noise around the floor. Clipping each frame's deviation
@@ -112,12 +119,10 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
       if (deviation < -12.0f) deviation = -12.0f;
       noiseVarDb2_[i] +=
           (deviation * deviation - noiseVarDb2_[i]) * approach(dt, config::kNoiseSpreadSeconds);
-    } else if (db < floor) {
-      // During sound, follow the band's dips down. This matters when music was
-      // already playing at power-on and the warm-up mistook it for the room.
-      // Any low bias this leaves is corrected at the next silence.
-      floor += (db - floor) * approach(dt, config::kFloorFallSeconds);
     }
+    // During sound, floors stay frozen. (Letting them follow dips down was
+    // tried: noise in narrow bands dips deep, so floors sank ~6 dB a minute
+    // under quiet music and the room's noise lit up when the music stopped.)
     if (floor > config::kFloorCeilingDb) floor = config::kFloorCeilingDb;
   }
 

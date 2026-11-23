@@ -4,7 +4,7 @@
 //
 // Noise floors are learned without a calibration step, while it is silent
 // (nothing standing out for a moment), when the noise can be measured without
-// bias. During sound, floors can only fall, so music is never learned as noise.
+// bias. During sound, floors are frozen, so music is never learned as noise.
 // A new noise loud enough to light bands (a fan) is learned on request with
 // learnNoise(); a steady hum lighting only a band or two is learned by itself.
 //
@@ -38,7 +38,8 @@ class LevelTracker {
  private:
   float tiltDb_[kBands] = {};
   float floorDb_[kBands] = {};
-  float noiseVarDb2_[kBands] = {};   // variance of the band's level around its floor, dB^2
+  float noiseVarDb2_[kBands] = {};
+  float smoothDb_[kBands] = {};      // band level averaged over ~1 s   // variance of the band's level around its floor, dB^2
   float broadFastDb_ = -120, broadSlowDb_ = -120, broadDeviationDb_ = 0;
   float quietRefDb_ = config::kQuietCeilingDb;
   float agcRefDb_ = -120;

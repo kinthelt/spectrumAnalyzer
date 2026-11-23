@@ -136,8 +136,11 @@ C++ with no Arduino headers, so it is tested on a PC. Hardware code stays thin.
    1 kHz) because music has less energy up there.
 4. **Noise floor and gate (no calibration step):**
    - Each band's floor and noise spread are learned **only during silence**, when the room
-     can be measured without bias. During sound, floors can only fall. Music is never
-     learned as noise.
+     can be measured without bias. During sound, floors are frozen, so music is never
+     learned as noise. (Letting floors follow dips during sound was tried: noise in narrow
+     bands dips deep, floors sank ~6 dB a minute under quiet music, and the room's noise
+     lit up afterwards.) A floor that is clearly too high, judged on a 1 s average, drops
+     quickly during silence.
    - A band lights only above its gate: floor + 3.5 × its noise spread, at least 6 dB.
      Narrow bass bands get ~15 dB, treble 6 dB.
    - A steady hum lighting only a band or two is learned by itself. A new noise that lights
@@ -157,7 +160,8 @@ C++ with no Arduino headers, so it is tested on a PC. Hardware code stays thin.
 
 Simulated results (PC tests): quiet room lights an LED in 0.07% of frames; a room whose
 level wobbles several dB stays silent 100% of the time; floors move 0.1 dB over 5 minutes
-of music; music already playing at power-on shows fully after the first pause.
+of music; silence returns after 5 minutes of quiet music (real filter bank); music
+already playing at power-on shows again after the first pause.
 
 Measured on the hardware (core 3.3.11): analysis takes 4.5 ms of each 10.7 ms block,
 **43% of core 0**; 93.6 blocks/s; LEDs unaffected at 99.8 fps.

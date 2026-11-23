@@ -419,8 +419,10 @@ TEST(end_to_end_tone_in_a_quiet_room) {
 }
 
 TEST(end_to_end_silent_again_after_music_stops) {
-  // Same bench report, with realistic noise from the real filter bank: in narrow
-  // bands, noise dips deep and often, which must not drag floors down.
+  // Same bench report, reproduced with the real filter bank: in narrow bands,
+  // noise dips deep and often. When floors were allowed to follow dips during
+  // sound, they sank ~6 dB in a minute of quiet music, and afterwards the room's
+  // noise lit 20-30 bands so silence never returned.
   FilterBank bank = makeBank();
   LevelTracker tracker;
   float centres[kBands];
@@ -443,8 +445,8 @@ TEST(end_to_end_silent_again_after_music_stops) {
       const double beat = (b % 47) < 12 ? 1.0 : 0.4;   // a pulse twice a second
       for (int s = 0; s < kBlock; ++s, ++n) {
         float x = roomNoise * gauss(rng);
-        if (music)
-          for (double f : notes) x += static_cast<float>(0.01 * beat * std::sin(2 * M_PI * f * n / kFs));
+        if (music)   // quiet music, ~-61 dBFS overall, as on the bench
+          for (double f : notes) x += static_cast<float>(0.0015 * beat * std::sin(2 * M_PI * f * n / kFs));
         block[s] = x;
       }
       bank.process(block);
@@ -456,7 +458,7 @@ TEST(end_to_end_silent_again_after_music_stops) {
 
   runFor(15.0, false);
   CHECK(frame.silent);
-  runFor(120.0, true);
+  runFor(300.0, true);   // five minutes: floors once sank ~6 dB in the first minute
   CHECK(!frame.silent);
   runFor(5.0, false);
   std::printf("      real filters: 5 s after the music stopped: silent=%d, %d bands lit\n",
