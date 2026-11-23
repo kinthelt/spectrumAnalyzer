@@ -10,7 +10,8 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 1 of 10: firmware skeleton with LED output and a bench test pattern.
+Build step 2 of 10: settings and 8 presets saved to flash, changed from Serial Monitor
+(type `help`). The strip still shows a bench test pattern, coloured by colour A.
 
 ## Building the firmware (Arduino IDE)
 
@@ -30,3 +31,12 @@ Build step 1 of 10: firmware skeleton with LED output and a bench test pattern.
 
 Hardware constants (pins, strip length, current limit) are in
 `firmware/SpectrumAnalyzer/src/config/Config.h`.
+
+## Running the PC unit tests
+
+The hardware-independent code (settings now, audio and modes later) has unit tests that run
+on a PC with g++ and make:
+
+```bash
+make -C test
+```

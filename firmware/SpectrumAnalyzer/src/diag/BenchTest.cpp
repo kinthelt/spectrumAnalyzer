@@ -7,7 +7,7 @@ constexpr uint32_t kCometStepMillis = 15;   // ~2.2 s from one end to the other
 constexpr int kCometTail = 12;              // LEDs in the fading tail
 }  // namespace
 
-void BenchTest::render(CRGB* pixels, int count, uint32_t nowMillis) {
+void BenchTest::render(CRGB* pixels, int count, uint32_t nowMillis, const CRGB& colour) {
   const uint32_t elapsed = nowMillis - startMillis_;
   fill_solid(pixels, count, CRGB::Black);
 
@@ -29,7 +29,9 @@ void BenchTest::render(CRGB* pixels, int count, uint32_t nowMillis) {
   for (int t = 0; t <= kCometTail; ++t) {
     const int i = head - direction * t;
     if (i < 0 || i >= count) break;
-    const uint8_t level = 255 - static_cast<uint8_t>((255 * t) / (kCometTail + 1));
-    pixels[i] = CRGB(level, level, level);
+    const uint16_t level = 255 - (255 * t) / (kCometTail + 1);   // 255 at the head
+    pixels[i] = CRGB(static_cast<uint8_t>(colour.r * level / 255),
+                     static_cast<uint8_t>(colour.g * level / 255),
+                     static_cast<uint8_t>(colour.b * level / 255));
   }
 }
