@@ -10,9 +10,10 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 7 of 10: web page. On first start the board opens a **Spectrum-Setup** network for
-entering your Wi-Fi details; after that the web page is at **http://spectrum.local** (or the
-board's IP address, shown under Share on the page). Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
+Build step 8 of 10: firmware updates over Wi-Fi. On first start the board opens a
+**Spectrum-Setup** network for entering your Wi-Fi details; after that the web page is at
+**http://spectrum.local** (or the board's IP address, shown under Share on the page), and new
+firmware can be installed from its Settings page or with `tools/build.sh ota`. Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
 settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
 
 ## Building from the command line
@@ -32,11 +33,28 @@ mkdir -p ~/bin && curl -fsSL https://raw.githubusercontent.com/arduino/arduino-c
 | `tools/build.sh flash [PORT]` | Compile, upload, then open the serial monitor (Ctrl+C quits) |
 | `tools/build.sh monitor [PORT]` | Serial monitor only |
 | `tools/build.sh erase [PORT]` | Compile and upload with **all flash erased** (asks first) |
+| `tools/build.sh ota [ADDRESS]` | Compile and install over Wi-Fi (default `spectrum.local`; give the IP if `.local` doesn't resolve). Waits for the restart and prints the new version. |
 | `tools/build.sh test` | Run the PC unit tests |
 | `tools/build.sh ports` | List connected boards |
 
 PORT defaults to the first `/dev/ttyACM*` or `/dev/ttyUSB*`. Close the IDE's Serial Monitor
 before uploading: only one program can use the port.
+
+### Updating over Wi-Fi
+
+Two ways, both through the same checks on the board:
+
+- `tools/build.sh ota` (compiles first), or
+- in the Arduino IDE, **Sketch → Export Compiled Binary**, then on the web page
+  **Settings → Firmware update → Choose firmware file** and pick
+  **`SpectrumAnalyzer.ino.esp32s3.bin`** from the sketch folder. (The export also puts other
+  files in the sketch's `build/` folder; the `.merged.bin`, bootloader and partition files are
+  refused with a message saying which file to choose.)
+
+The strip shows a blue progress bar, flashes green and restarts (red flashes if the update was
+refused; the old firmware stays). New firmware is kept once it has been on Wi-Fi with the web
+page running for 30 s in a row; if that doesn't happen within 5 minutes, or it crashes first,
+the previous firmware comes back by itself. USB uploads are unaffected.
 
 ## Building the firmware (Arduino IDE)
 

@@ -113,7 +113,9 @@ firmware/SpectrumAnalyzer/
   src/settings/             Settings model, presets, flash persistence
   src/net/                  Wi-Fi state machine and setup network, spectrum.local, power-cycle trick
   src/web/                  WebApi (what requests mean; PC-tested), WebUi (HTTP glue), WebPage.h
-                            (generated); Ota and MatterLight to come
+                            (generated)
+  src/update/               UpdateSession (upload rules), BootValidator (keep or go back),
+                            FirmwareMarker (PC-tested); FirmwareUpdate (Update library, OTA glue)
   src/diag/, src/util/      statistics, serial console; logging, colours, JSON, Shared<T>
 web/                        the web page source (index.html, vendor/qrcode.js)
 tools/                      build.sh, embed_web.py (page -> WebPage.h), mock_server.py
@@ -258,7 +260,7 @@ Spike findings that shaped the code:
   don't resolve `.local` names. A DHCP reservation on the router keeps that address fixed.
 - **Settings view:** status (version, Wi-Fi network and signal, address, audio, CPU load,
   uptime), and maintenance actions, each confirmed first: Learn room noise, Forget Wi-Fi,
-  Reset settings (Wi-Fi is kept). Firmware updates join these in step 8.
+  Reset settings (Wi-Fi is kept). Above them, Firmware update (see below).
 - **Staying in sync:** the page polls `/api/state` every 2 s, so changes from another phone
   (or Apple/Google Home later) appear within a couple of seconds. While a finger is on a
   control, polled values don't fight it. Live controls send at most 10 changes a second,
@@ -286,9 +288,37 @@ Spike findings that shaped the code:
 
 ### Firmware updates
 
-- **From the Arduino IDE** over the network (network port), and **from the web page** by
-  uploading a `.bin` exported by the IDE.
-- Uses the "Matter 8MB with spiffs" scheme's two 3.25 MB app slots (checked in step 6).
+- **One way in:** `POST /api/update` (multipart form, field `firmware`). The web page's
+  Settings → Firmware update and `tools/build.sh ota` (compile, then `curl`) both use it. No
+  password, like the rest of the page (decided). No Arduino IDE network port: one less
+  library and one less open port.
+- **The file:** Arduino IDE 1.8 → Sketch → Export Compiled Binary saves
+  `SpectrumAnalyzer.ino.esp32s3.bin` in the sketch folder; the board package also copies every
+  build file (including `.merged.bin`) into the sketch's `build/` folder.
+- **Checks before the new firmware is used** (`UpdateSession`, unit-tested):
+  - fits the spare slot (the "Matter 8MB with spiffs" scheme's 3.25 MB app slots), so the
+    whole-flash `.merged.bin` is refused before anything is written;
+  - first byte 0xE9 (an ESP32 image);
+  - contains this project's marker text (`FirmwareMarker.h`), so another sketch's firmware,
+    or the bootloader file, is refused;
+  - the Update library's own checks at the end: complete, checksums, built for an ESP32-S3.
+  Only after all of them does the bootloader switch to the new slot. The page also catches
+  the usual wrong picks by file name before sending.
+- **Strip:** a blue bar fills left to right while the file arrives (brightness fixed so it
+  shows even if the lights were off), green flashes when installed, then the board restarts
+  into the saved mode and settings (saved first). Red flashes if refused; the old firmware
+  carries on.
+- **Going back automatically** (`BootValidator`, unit-tested): the esp32 3.3.x board package
+  is built with the bootloader's app rollback on (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
+  The sketch overrides the core's `verifyRollbackLater()` hook (it must be `extern "C"`; a
+  plain C++ definition is silently ignored), so new firmware stays on trial until it has
+  been on the home Wi-Fi with the web page running for **30 s in a row**. If that hasn't
+  happened **5 min** after starting, it goes back; if it crashes or loses power while on
+  trial, the bootloader goes back by itself. Settings → Status notes when an update was undone.
+  A power cut or router outage during those minutes also means going back: the update is
+  simply sent again.
+- **During an upload** the Arduino loop is busy receiving (the web server handles one request
+  at a time), so other phones' pages wait; the LEDs and audio run on their own tasks.
 
 ### Matter
 
@@ -316,7 +346,7 @@ Each step ends with something testable on the bench.
 5. **Spectrum modes:** Snappy and Smooth, silence fade; tuning on the hardware.
 6. **Wi-Fi:** setup portal, mDNS, power-cycle reset.
 7. **Web page and API.**
-8. **Wi-Fi updates.**
+8. **Wi-Fi updates:** upload checks, progress bar, automatic rollback.
 9. **Matter.**
 10. **Install:** Perma-Proto board, ceiling wiring, current limit raised to the final value.
 

@@ -6,7 +6,8 @@
 then open http://localhost:8080 (or this computer's address from a phone on the same
 Wi-Fi). It serves the page exactly as the firmware does (built by tools/embed_web.py,
 with the QR library inline) and answers the same API as src/web/WebApi.cpp, keeping
-state in memory. Edits to web/ show up on reload. GET /__requests lists the requests received (used by the
+state in memory. Edits to web/ show up on reload. POST /api/update applies the same
+checks as the firmware to an uploaded file, then pretends to restart (no answers for 3 s). GET /__requests lists the requests received (used by the
 browser tests).
 """
 import argparse
@@ -22,6 +23,12 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embed_web import build_page  # noqa: E402
 
+ROOT = Path(__file__).resolve().parent.parent
+MARKER = re.search(r'kText\[\] = "([^"]+)"',
+                   (ROOT / "firmware/SpectrumAnalyzer/src/update/FirmwareMarker.h").read_text()).group(1).encode()
+UPDATE_MAX_BYTES = 0x330000   # app slot of the "Matter 8MB with spiffs" scheme
+WHICH = ("Choose SpectrumAnalyzer.ino.esp32s3.bin from the sketch folder (Sketch > Export Compiled "
+         "Binary in the Arduino IDE).")
 MODES = ["spectrum-snappy", "spectrum-smooth", "solid", "gradient", "rainbow", "twinkle"]
 NAME_MAX_BYTES = 24
 
@@ -48,6 +55,9 @@ class Lights:
         self.names = [f"Preset {i + 1}" for i in range(8)]
         self.started = time.time()
         self.learning_until = 0
+        self.version = "mock"
+        self.down_until = 0
+        self.uploads = 0
         self.requests = []
 
     def state(self):
@@ -60,11 +70,12 @@ class Lights:
         return {
             "revision": self.revision, **self.s, "modes": MODES, "presets": presets,
             "status": {
-                "version": "mock", "uptime": int(time.time() - self.started),
+                "version": self.version, "uptime": int(time.time() - self.started),
                 "wifi": {"connected": True, "ssid": "Home Wi-Fi", "rssi": -58, "ip": "192.168.3.234",
                          "url": "http://192.168.3.234/", "localUrl": "http://spectrum.local/"},
                 "audio": {"ok": True, "silent": False, "learningNoise": time.time() < self.learning_until,
                           "loadPercent": 43},
+                "update": {"maxBytes": UPDATE_MAX_BYTES, "onTrial": False, "lastUndone": False},
             },
         }
 
@@ -124,6 +135,25 @@ class Lights:
         self.revision += 1
         return ""
 
+    def update(self, data):
+        """Same checks and messages as UpdateSession (firmware)."""
+        self.uploads += 1
+        if len(data) > UPDATE_MAX_BYTES:
+            return ("That file is too big to be a firmware update (the .merged.bin is the whole "
+                    "flash). " + WHICH)
+        if not data:
+            return "The file was empty."
+        if data[0] != 0xE9:
+            return "That isn't a firmware file. " + WHICH
+        if MARKER not in data:
+            return ("That isn't firmware for these lights: it's from another sketch, or it's another "
+                    "of the exported files. " + WHICH)
+        # "Restart" into the new version: silent for 3 s, uptime starts over.
+        self.version = "mock-%d" % self.uploads
+        self.down_until = time.time() + 3
+        self.started = self.down_until
+        return ""
+
     def action(self, name):
         if name == "learn-noise":
             self.learning_until = time.time() + 10
@@ -140,6 +170,18 @@ class Lights:
 LIGHTS = Lights()
 
 
+def multipart_file(content_type, body, field):
+    """The bytes of the named file field in a multipart/form-data body, or None."""
+    m = re.search(r'boundary="?([^";]+)"?', content_type)
+    if not m:
+        return None
+    for part in body.split(b"--" + m.group(1).encode()):
+        head, sep, rest = part.partition(b"\r\n\r\n")
+        if sep and f'name="{field}"'.encode() in head:
+            return rest[:-2] if rest.endswith(b"\r\n") else rest
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -153,8 +195,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def restarting(self):
+        """While 'restarting', drop the connection without answering, like the board."""
+        if time.time() < LIGHTS.down_until:
+            self.close_connection = True
+            return True
+        return False
+
     def do_GET(self):
         path = urlparse(self.path).path
+        if self.restarting():
+            return
         with LIGHTS.lock:
             LIGHTS.requests.append({"method": "GET", "path": path, "t": time.time()})
             if path == "/api/state":
@@ -168,6 +219,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
+        if self.restarting():
+            return
+        if path == "/api/update":
+            body = self.rfile.read(length)
+            data = multipart_file(self.headers.get("Content-Type", ""), body, "firmware")
+            with LIGHTS.lock:
+                LIGHTS.requests.append({"method": "POST", "path": path, "fields": {}, "bytes": len(body),
+                                        "t": time.time()})
+                if data is None:
+                    return self.send(400, json.dumps({"error": "No file was sent."}))
+                err = LIGHTS.update(data)
+                if err:
+                    return self.send(400, json.dumps({"error": err}))
+                return self.send(200, json.dumps(LIGHTS.state()))
         fields = {k: v[0] for k, v in parse_qs(self.rfile.read(length).decode("utf-8"),
                                                keep_blank_values=True).items()}
         with LIGHTS.lock:

@@ -95,6 +95,12 @@ input[type=color] { width: 64px; height: 44px; padding: 0; border: 1px solid var
 .action + .action { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
 .action p { margin: 0; color: var(--muted); font-size: 14px; }
 .action .btn { align-self: flex-start; }
+.file-btn { position: relative; display: inline-flex; align-items: center; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.fw-progress { display: flex; flex-direction: column; gap: 6px; }
+.fw-progress progress { width: 100%; height: 12px; accent-color: var(--accent); }
+.fw-msg { margin: 0; font-size: 15px; }
+.fw-msg.bad { color: var(--danger); }
 .back { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 10px 4px;
         min-height: 44px; cursor: pointer; color: var(--accent); font-weight: 600; }
 
@@ -185,6 +191,21 @@ footer.row { margin-top: 2px; }
     <dl class="facts" id="facts"></dl>
   </section>
 
+  <section class="card" aria-labelledby="h-firmware">
+    <h2 id="h-firmware">Firmware update</h2>
+    <div class="action">
+      <p id="fw-note" hidden></p>
+      <p>In the Arduino IDE, choose <b>Sketch › Export Compiled Binary</b>, then pick
+         <b>SpectrumAnalyzer.ino.esp32s3.bin</b> from the sketch folder. The strip shows a progress
+         bar and the lights restart; it takes about a minute.</p>
+      <label class="btn file-btn" id="fw-choose">Choose firmware file…<input type="file" id="fw-file"></label>
+      <div class="fw-progress" id="fw-progress" hidden>
+        <progress id="fw-bar" max="100" value="0"></progress>
+      </div>
+      <p class="fw-msg" id="fw-msg" role="status" hidden></p>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="h-actions">
     <h2 id="h-actions">Maintenance</h2>
     <div class="action">
@@ -261,6 +282,7 @@ footer.row { margin-top: 2px; }
 //   POST /api/state                  on, mode, brightness, colourA, colourB, spectrumColour
 //   POST /api/preset/<action>        save | recall | rename | delete (slot, name)
 //   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
+//   POST /api/update                 a firmware file (multipart, field "firmware")
 // Every POST answers with the new state (or {"error": "..."}).
 // ---------------------------------------------------------------------------
 
@@ -411,6 +433,10 @@ function renderStatus(s) {
   fact(dl, "Audio load", a.loadPercent + "% of one core");
   fact(dl, "Running for", duration(st.uptime));
   fact(dl, "Firmware", st.version);
+  const u = st.update, note = $("fw-note");
+  note.textContent = u.onTrial ? "Just updated: the new firmware stays once it has been on Wi-Fi for 30 seconds." :
+      u.lastUndone ? "The last update was undone: it didn't stay on Wi-Fi, so the previous firmware came back." : "";
+  note.hidden = !note.textContent;
 }
 
 function signal(rssi) {
@@ -502,6 +528,124 @@ $("reset-btn").onclick = () => confirmThen("Reset settings?",
   "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.",
   "Reset", () => call("/api/action/reset-settings", {}).then((d) => d && toast("Settings reset")));
 
+// ---- Firmware update -----------------------------------------------------------------------
+// The upload uses XMLHttpRequest because fetch() can't report upload progress.
+// While it runs, and while the lights restart, normal polling pauses (the lights
+// serve one request at a time, and going offline during the restart is expected).
+const FW_WHICH = "Choose SpectrumAnalyzer.ino.esp32s3.bin from the sketch folder.";
+let updating = false;
+
+function mb(bytes) { return (bytes / 1048576).toFixed(1) + " MB"; }
+
+function fwMessage(text, bad) {
+  const m = $("fw-msg");
+  m.textContent = text;
+  m.classList.toggle("bad", !!bad);
+  m.hidden = !text;
+}
+function fwProgress(percent) {
+  $("fw-progress").hidden = percent === null;
+  if (percent !== null) $("fw-bar").value = percent;
+}
+
+// Catches the usual wrong picks from the IDE's export before sending anything.
+function firmwareFileProblem(file, maxBytes) {
+  const n = file.name.toLowerCase();
+  if (n.endsWith(".merged.bin")) return "That's the .merged.bin (the whole flash), not the update. " + FW_WHICH;
+  if (n.endsWith(".bootloader.bin")) return "That's the bootloader, not the firmware. " + FW_WHICH;
+  if (n.endsWith(".partitions.bin")) return "That's the partition table, not the firmware. " + FW_WHICH;
+  if (!n.endsWith(".bin")) return "That isn't a firmware file (.bin). " + FW_WHICH;
+  if (maxBytes && file.size > maxBytes) return `That file is too big (${mb(file.size)}). ` + FW_WHICH;
+  return "";
+}
+
+$("fw-file").onchange = () => {
+  const file = $("fw-file").files[0];
+  $("fw-file").value = "";   // so picking the same file again still works
+  if (!file || updating) return;
+  const problem = firmwareFileProblem(file, state && state.status.update.maxBytes);
+  if (problem) { fwProgress(null); fwMessage(problem, true); return; }
+  fwMessage("");
+  confirmThen("Install this update?",
+    `${file.name} (${mb(file.size)}). The strip shows a progress bar, then the lights restart. ` +
+    "Keep this page open: it takes about a minute.",
+    "Install", () => uploadFirmware(file));
+};
+
+function uploadFirmware(file) {
+  updating = true;
+  const before = state ? state.status : null;
+  const sentAt = Date.now();
+  fwProgress(0);
+  fwMessage("Sending… 0%");
+  $("fw-choose").hidden = true;
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/update");
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const p = Math.min(99, Math.floor(e.loaded * 100 / e.total));
+    fwProgress(p);
+    fwMessage(`Sending… ${p}%`);
+  };
+  xhr.onload = () => {
+    let data = null;
+    try { data = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+    if (xhr.status === 200) {
+      fwProgress(100);
+      fwMessage("Installed. The lights are restarting…");
+      waitForRestart(before, sentAt);
+    } else {
+      fwDone();
+      fwProgress(null);
+      fwMessage((data && data.error) || `The update didn't work (error ${xhr.status}).`, true);
+    }
+  };
+  xhr.onerror = () => {
+    fwDone();
+    fwProgress(null);
+    fwMessage("The upload was cut off. The lights keep their current version.", true);
+  };
+  const form = new FormData();
+  form.append("firmware", file, file.name);
+  xhr.send(form);
+}
+
+// Polls until the lights answer again after restarting (their uptime starts over).
+async function waitForRestart(before, sentAt) {
+  const deadline = Date.now() + 120000;
+  let sawDown = false;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1500));
+    let s = null;
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      s = await res.json();
+    } catch (e) {
+      sawDown = true;
+      continue;
+    }
+    const elapsed = (Date.now() - sentAt) / 1000;
+    const restarted = sawDown || !before || s.status.uptime < before.uptime + elapsed - 5;
+    if (!restarted) continue;
+    fwDone();
+    setOnline(true);
+    render(s);
+    fwProgress(null);
+    fwMessage(before && s.status.version === before.version
+      ? `The lights restarted, still on version ${s.status.version}.`
+      : `Updated to version ${s.status.version}.`);
+    return;
+  }
+  fwDone();
+  fwMessage("The lights haven't come back yet. If they don't within a few minutes, the previous " +
+            "firmware returns by itself.", true);
+}
+
+function fwDone() {
+  updating = false;
+  $("fw-choose").hidden = false;
+}
+
 // ---- Share -----------------------------------------------------------------------------------
 $("share-btn").onclick = () => {
   const url = (state && state.status.wifi.url) || location.href;
@@ -554,9 +698,9 @@ buildModes();
 showView();
 call("/api/state");
 setInterval(() => {
-  if (!document.hidden && Date.now() - lastTouch > QUIET_MS) call("/api/state");
+  if (!document.hidden && !updating && Date.now() - lastTouch > QUIET_MS) call("/api/state");
 }, POLL_MS);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) call("/api/state"); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !updating) call("/api/state"); });
 </script>
 </body>
 </html>

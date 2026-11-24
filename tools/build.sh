@@ -8,6 +8,9 @@
 #   tools/build.sh flash   [PORT]        compile, upload, then open the monitor
 #   tools/build.sh erase   [PORT]        compile, ERASE ALL FLASH, upload
 #                                        (wipes settings, presets, Wi-Fi and pairing)
+#   tools/build.sh ota     [ADDRESS]     compile, then update the lights over Wi-Fi
+#                                        (ADDRESS defaults to spectrum.local; use the
+#                                        IP address if this computer can't find .local)
 #   tools/build.sh test                  run the PC unit tests
 #   tools/build.sh ports                 list connected boards
 #
@@ -77,8 +80,60 @@ monitor() {   # $1: port
   run arduino-cli monitor -p "$1" -c baudrate="$BAUD"
 }
 
-usage() {
-  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+usage() {   # the comment block at the top of this file
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
+}
+
+json_field() {   # $1: Python expression on d, the JSON read from stdin
+  python3 -c "import json, sys; d = json.load(sys.stdin); print($1)"
+}
+
+# Sends a firmware file to the lights' /api/update (the same as the web page's
+# Settings > Firmware update), then waits for them to restart and reports the version.
+send_update() {   # $1: .bin file, $2: address
+  local bin="$1" host="$2" url="http://$2"
+  for tool in curl python3; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "$tool is needed for 'ota'." >&2; exit 1; }
+  done
+  if [[ "${DRY_RUN:-0}" == 1 ]]; then
+    echo "+ curl --fail-with-body -F firmware=@$bin $url/api/update" >&2
+    return
+  fi
+  [[ -f "$bin" ]] || { echo "No $bin after compiling." >&2; exit 1; }
+  local before
+  if ! before="$(curl -sS --max-time 5 "$url/api/state" | json_field 'd["status"]["version"]')"; then
+    echo "Can't reach the lights at $url. Are they on? If this computer can't find" >&2
+    echo ".local names, give the IP address (Settings on the web page shows it):" >&2
+    echo "  tools/build.sh ota 192.168.x.x" >&2
+    exit 1
+  fi
+  echo "Lights at $url are on version $before. Sending $(basename "$bin") ($(du -h "$bin" | cut -f1))..." >&2
+  local reply
+  reply="$(mktemp)"
+  if ! curl --fail-with-body --progress-bar -o "$reply" \
+       -F "firmware=@$bin;type=application/octet-stream" "$url/api/update"; then
+    echo "The lights refused the update: $(json_field 'd.get("error", d)' <"$reply" 2>/dev/null || cat "$reply")" >&2
+    rm -f "$reply"
+    exit 1
+  fi
+  rm -f "$reply"
+  echo "Installed. Waiting for the lights to restart..." >&2
+  sleep 3   # they restart 1.5 s after replying; anything answering after this is the new firmware
+  local version="" i
+  for i in $(seq 1 60); do
+    if version="$(curl -sS --max-time 3 "$url/api/state" 2>/dev/null | json_field 'd["status"]["version"]' 2>/dev/null)"; then
+      break
+    fi
+    version=""
+    sleep 2
+  done
+  if [[ -z "$version" ]]; then
+    echo "The lights haven't answered after 2 minutes. If the new firmware can't get on Wi-Fi," >&2
+    echo "the previous one returns by itself within 5 minutes." >&2
+    exit 1
+  fi
+  echo "Lights are back, running version $version. It stays once it has been on Wi-Fi for 30 s" >&2
+  echo "(the serial log says 'is good: it stays')." >&2
 }
 
 cmd="${1:-}"
@@ -110,6 +165,12 @@ case "$cmd" in
     fi
     compile all
     upload all "$port"
+    ;;
+  ota)
+    need_cli
+    out="$REPO/build/ota"   # build/ is ignored by git
+    run arduino-cli compile --fqbn "$(fqbn none)" --output-dir "$out" "$SKETCH"
+    send_update "$out/SpectrumAnalyzer.ino.bin" "${port_arg:-spectrum.local}"
     ;;
   test)
     run make -C "$REPO/test"

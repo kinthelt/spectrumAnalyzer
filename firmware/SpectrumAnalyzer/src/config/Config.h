@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.7.0";
+constexpr const char* kFirmwareVersion = "0.8.0";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
@@ -96,6 +96,22 @@ constexpr uint32_t kSetupPortalMillis = 10u * 60u * 1000u;
 // of switching on, opens the setup network (the board is above the ceiling).
 constexpr int kPowerCyclesForSetup = 3;
 constexpr uint32_t kPowerCycleWindowMillis = 5000;
+
+// ---- Firmware updates over Wi-Fi ----------------------------------------------
+// After an update, the new firmware counts as good once it has been on the home
+// Wi-Fi with the web page running for kUpdateGoodAfterMillis in a row. If that
+// hasn't happened kUpdateGiveUpMillis after starting (or it crashes or restarts
+// first), the board goes back to the previous firmware.
+constexpr uint32_t kUpdateGoodAfterMillis = 30u * 1000;
+constexpr uint32_t kUpdateGiveUpMillis = 5u * 60 * 1000;
+constexpr uint32_t kUpdateStallMillis = 15u * 1000;       // upload gives up if no data this long
+constexpr uint32_t kUpdateRestartDelayMillis = 1500;      // green flash, and the reply reaches the phone
+constexpr uint32_t kUpdateFailFlashMillis = 2000;         // red flash, then back to normal
+constexpr uint8_t kUpdateBarBrightness = 80;              // progress bar shows even if the lights were off
+// Bench test of the rollback only: set true, upload this build over Wi-Fi, and it
+// never declares itself good, so after kUpdateGiveUpMillis the previous firmware
+// returns. Always false otherwise.
+constexpr bool kTestUpdateNeverConfirms = false;
 
 // ---- LED task -----------------------------------------------------------------
 // Core 1, above the Arduino loop (priority 1), so network work never delays frames.

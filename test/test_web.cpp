@@ -42,6 +42,7 @@ DeviceStatus sampleStatus() {
   st.silent = false;
   st.audioLoadPercent = 43;
   st.uptimeSeconds = 1234;
+  st.updateMaxBytes = 3342336;
   return st;
 }
 
@@ -82,7 +83,8 @@ TEST(web_state_json_has_everything_the_page_needs) {
                             "\"name\":\"Movie \\\"night\\\" 🎬\"", "\"used\":true",
                             "\"name\":\"Preset 2\",\"used\":false", "\"url\":\"http://192.168.3.234/\"",
                             "\"localUrl\":\"http://spectrum.local/\"", "\"ssid\":\"Home \\\"5G\\\" Wi-Fi\"",
-                            "\"loadPercent\":43"}) {
+                            "\"loadPercent\":43",
+                            "\"update\":{\"maxBytes\":3342336,\"onTrial\":false,\"lastUndone\":false}"}) {
     if (json.find(field) == std::string::npos) {
       CHECK(json.find(field) != std::string::npos);
       std::printf("      missing: %s\n", field);

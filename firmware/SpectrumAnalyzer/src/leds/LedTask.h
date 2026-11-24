@@ -5,6 +5,7 @@
 // frame statistics. It reads settings only through a shared snapshot that the
 // Arduino loop publishes, so network work in the loop (web page, Wi-Fi setup)
 // can never delay a frame, and the two never touch the same data unguarded.
+// During a firmware update it shows the progress bar instead of the mode.
 #pragma once
 
 #include "../audio/AudioInput.h"
@@ -12,13 +13,15 @@
 #include "../diag/FrameStats.h"
 #include "../modes/ModeManager.h"
 #include "../settings/LightSettings.h"
+#include "../update/UpdateProgress.h"
 #include "../util/Shared.h"
 #include "LedOutput.h"
 
 class LedTask {
  public:
-  LedTask(AudioInput& audio, const Shared<LightSettings>& settings)
-      : audio_(audio), settings_(settings) {}
+  LedTask(AudioInput& audio, const Shared<LightSettings>& settings,
+          const Shared<UpdateProgress>& update)
+      : audio_(audio), settings_(settings), update_(update) {}
 
   // Sets up FastLED and starts the task. Call once from setup(), after the
   // first settings snapshot has been published.
@@ -31,6 +34,7 @@ class LedTask {
 
   AudioInput& audio_;
   const Shared<LightSettings>& settings_;
+  const Shared<UpdateProgress>& update_;
 
   LedOutput leds_;
   ModeManager modes_;
@@ -38,6 +42,9 @@ class LedTask {
 
   LightSettings current_;
   unsigned settingsVersion_ = 0;
+  UpdateProgress updateProgress_;
+  unsigned updateVersion_ = 0;
+  bool showingUpdate_ = false;
   AudioFrame audioFrame_;
   bool haveAudio_ = false;
   uint32_t lastAudioMillis_ = 0;

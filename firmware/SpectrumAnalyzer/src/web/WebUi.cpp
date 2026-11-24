@@ -73,6 +73,8 @@ void WebUi::addRoutes() {
     const String path = String("/api/action/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handleAction(action); });
   }
+  server_.on("/api/update", HTTP_POST, [this]() { handleUploadDone(); },
+             [this]() { handleUploadChunk(); });
   server_.onNotFound([this]() { sendError(404, "not found"); });
 }
 
@@ -127,4 +129,42 @@ void WebUi::handleAction(const char* action) {
     forgetRequestedMillis_ = millis();
   }
   sendState();
+}
+
+// The web server calls this for each piece of the uploaded file. The whole
+// upload happens inside one handleClient() call, so the Arduino loop is paused
+// meanwhile; the LED task (its own task) shows the progress.
+void WebUi::handleUploadChunk() {
+  HTTPUpload& up = server_.upload();
+  switch (up.status) {
+    case UPLOAD_FILE_START:
+      uploadSeen_ = true;
+      uploadRefusedBusy_ = update_.busy();
+      // The request's length is the file plus a few hundred bytes of form wrapping.
+      uploadRefusal_ = update_.uploadStart(static_cast<size_t>(server_.clientContentLength()), millis());
+      break;
+    case UPLOAD_FILE_WRITE:
+      if (!uploadRefusedBusy_) update_.uploadData(up.buf, up.currentSize, millis());
+      break;
+    case UPLOAD_FILE_END:
+      if (!uploadRefusedBusy_) update_.uploadEnd(millis());
+      break;
+    case UPLOAD_FILE_ABORTED:
+      if (!uploadRefusedBusy_) update_.uploadAborted(millis());
+      uploadSeen_ = false;
+      uploadRefusedBusy_ = false;
+      break;
+  }
+}
+
+void WebUi::handleUploadDone() {
+  const bool seen = uploadSeen_;
+  const bool busy = uploadRefusedBusy_;
+  uploadSeen_ = false;
+  uploadRefusedBusy_ = false;
+
+  if (!seen) return sendError(400, "No file was sent.");
+  if (busy) return sendError(409, uploadRefusal_);       // another update is running or done
+  if (!update_.succeeded()) return sendError(400, update_.error());   // refused or failed
+  sendState();   // the board restarts in a moment (FirmwareUpdate::loop)
 }

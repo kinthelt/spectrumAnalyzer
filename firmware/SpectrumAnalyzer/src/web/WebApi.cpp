@@ -104,6 +104,11 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   j.key("learningNoise").value(status.learningNoise);
   j.key("loadPercent").value(status.audioLoadPercent);
   j.endObject();
+  j.key("update").beginObject();
+  j.key("maxBytes").value(status.updateMaxBytes);
+  j.key("onTrial").value(status.updateOnTrial);
+  j.key("lastUndone").value(status.updateLastUndone);
+  j.endObject();
   j.endObject();
 
   j.endObject();

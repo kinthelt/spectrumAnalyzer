@@ -4,8 +4,9 @@
 //
 // Runs at two phone sizes (a small iPhone, a narrow Android) and checks the
 // things guests will do: power, brightness dragging, modes, colours, presets,
-// settings confirmations, share code, staying in sync with other phones, and
-// the offline banner. Saves screenshots (light and dark) to test/build/web/.
+// settings confirmations, share code, staying in sync with other phones,
+// firmware updates (wrong files caught, a good one installed, the restart
+// followed), and the offline banner. Saves screenshots (light and dark) to test/build/web/.
 "use strict";
 const { chromium, devices } = require("playwright");
 const { spawn } = require("child_process");
@@ -18,6 +19,17 @@ const OUT = path.join(ROOT, "test/build/web");
 const PORT = 8765;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PHONES = ["iPhone 13 Mini", "Galaxy S8"];
+// The firmware's marker text (a file without it is refused as another sketch's firmware).
+const MARKER = Buffer.from(/kText\[\] = "([^"]+)"/.exec(
+  fs.readFileSync(path.join(ROOT, "firmware/SpectrumAnalyzer/src/update/FirmwareMarker.h"), "utf8"))[1]);
+
+// A pretend firmware file: ESP32 image magic byte, filler, and optionally the marker.
+function fakeFirmware(size, withMarker) {
+  const b = Buffer.alloc(size, 7);
+  b[0] = 0xE9;
+  if (withMarker) MARKER.copy(b, 5000);
+  return b;
+}
 
 let failures = 0;
 async function check(name, fn) {
@@ -47,7 +59,11 @@ async function openPage(browser, phone, scheme = "light") {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  // Failed requests (a refused upload, the gap while the lights restart) are expected;
+  // Chrome logs each as "Failed to load resource". Anything else counts as an error.
+  page.on("console", (m) => {
+    if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) errors.push(m.text());
+  });
   await page.goto(BASE + "/");
   await page.waitForSelector("#add-preset");
   return { context, page, errors };
@@ -219,6 +235,42 @@ async function openPage(browser, phone, scheme = "light") {
       await page.click("#confirm-ok");
       await page.waitForFunction(() => document.querySelector("#facts").textContent.includes("Learning"));
       await page.screenshot({ path: path.join(OUT, `${phone}-settings.png`), fullPage: true });
+      await page.click("#back-btn");
+      await page.waitForSelector("#main-view:not([hidden])");
+    });
+
+    await check("firmware update: wrong files caught, a good one installs, the restart is followed", async () => {
+      await page.click("#settings-btn");
+      await page.waitForSelector("#settings-view:not([hidden])");
+      const t0 = Date.now() / 1000;
+      const file = (name, buffer) => ({ name, mimeType: "application/octet-stream", buffer });
+
+      // The IDE's .merged.bin: caught on the page, nothing sent.
+      await page.setInputFiles("#fw-file", file("SpectrumAnalyzer.ino.merged.bin", fakeFirmware(4000, true)));
+      await page.waitForSelector("#fw-msg.bad");
+      assert.ok((await page.textContent("#fw-msg")).includes(".merged.bin"));
+
+      // Another sketch's firmware: sent, refused by the lights, their reason shown.
+      await page.setInputFiles("#fw-file", file("WifiMatterSpike.ino.esp32s3.bin", fakeFirmware(200000, false)));
+      await page.waitForSelector("#confirm-dialog[open]");
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#fw-msg").textContent.includes("another sketch"));
+      assert.ok(await page.isVisible("#fw-choose"), "can choose again after a refusal");
+
+      // The right file: confirm, progress, restart, new version.
+      await page.setInputFiles("#fw-file", file("SpectrumAnalyzer.ino.esp32s3.bin", fakeFirmware(1500000, true)));
+      await page.waitForSelector("#confirm-dialog[open]");
+      assert.ok((await page.textContent("#confirm-text")).includes("SpectrumAnalyzer.ino.esp32s3.bin (1.4 MB)"));
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => /restarting/.test(document.querySelector("#fw-msg").textContent));
+      await page.screenshot({ path: path.join(OUT, `${phone}-update-restarting.png`), fullPage: true });
+      await page.waitForFunction(() => /Updated to version mock-\d/.test(document.querySelector("#fw-msg").textContent),
+                                 null, { timeout: 15000 });
+      assert.ok(!(await page.isVisible("#offline")), "no offline banner for the expected restart");
+      assert.ok((await page.textContent("#facts")).includes("mock-"), "status shows the new version");
+      const uploads = (await requests(t0)).filter((r) => r.path === "/api/update");
+      assert.strictEqual(uploads.length, 2, "the .merged.bin is never sent");
+      await page.screenshot({ path: path.join(OUT, `${phone}-update-done.png`), fullPage: true });
       await page.click("#back-btn");
       await page.waitForSelector("#main-view:not([hidden])");
     });

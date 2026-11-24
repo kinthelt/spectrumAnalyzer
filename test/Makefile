@@ -20,9 +20,13 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/net/WifiStateMachine.cpp \
 	$(SRC_DIR)/net/PowerCycleCounter.cpp \
 	$(SRC_DIR)/util/JsonWriter.cpp \
-	$(SRC_DIR)/web/WebApi.cpp
+	$(SRC_DIR)/web/WebApi.cpp \
+	$(SRC_DIR)/update/FirmwareMarker.cpp \
+	$(SRC_DIR)/update/UpdateSession.cpp \
+	$(SRC_DIR)/update/BootValidator.cpp \
+	$(SRC_DIR)/modes/UpdateBar.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp test_update.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests

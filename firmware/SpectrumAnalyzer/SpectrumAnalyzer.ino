@@ -8,6 +8,7 @@
 //   src/leds/      LED output (FastLED)
 //   src/net/       Wi-Fi, setup network, spectrum.local
 //   src/web/       the web page and its API
+//   src/update/    firmware updates over Wi-Fi, and going back if one fails
 //   src/diag/      statistics, live audio view and the serial console
 //   src/util/      logging, colours, boot information
 //
@@ -26,6 +27,7 @@
 #include "src/net/StationIp.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
+#include "src/update/FirmwareUpdate.h"
 #include "src/util/Log.h"
 #include "src/util/Shared.h"
 #include "src/util/SystemInfo.h"
@@ -42,7 +44,8 @@ static SettingsManager settings(store);
 static Shared<LightSettings> sharedSettings;
 static uint32_t publishedRevision = 0;
 static AudioInput audio;
-static LedTask ledTask(audio, sharedSettings);
+static FirmwareUpdate firmwareUpdate;
+static LedTask ledTask(audio, sharedSettings, firmwareUpdate.progress());
 static AudioMonitor audioMonitor;
 static Connectivity connectivity;
 static PowerCycleCounter powerCycles(store);
@@ -58,7 +61,7 @@ static void publishSettings() {
 
 // Facts for the web page's status panel.
 static DeviceStatus deviceStatus();
-static WebUi webUi(settings, WebUi::Hooks{
+static WebUi webUi(settings, firmwareUpdate, WebUi::Hooks{
                                  deviceStatus,
                                  [] { audio.requestNoiseLearning(); },
                                  [] { connectivity.forgetWifi(); },
@@ -70,6 +73,9 @@ static DeviceStatus deviceStatus() {
   st.version = config::kFirmwareVersion;
   st.hostname = config::kHostname;
   st.uptimeSeconds = millis() / 1000;
+  st.updateMaxBytes = firmwareUpdate.maxBytes();
+  st.updateOnTrial = firmwareUpdate.onTrial();
+  st.updateLastUndone = firmwareUpdate.lastUpdateUndone();
 
   uint32_t ip = 0;
   if (connectivity.connected() && stationIp(&ip)) {
@@ -107,6 +113,8 @@ void setup() {
   store.begin();
   settings.begin();
   publishSettings();
+  firmwareUpdate.begin(millis());
+  firmwareUpdate.setBeforeRestart([] { settings.flush(); });
   audioStarted = audio.begin();
   ledTask.start();
 
@@ -123,6 +131,8 @@ void loop() {
   settings.tick(millis());
   publishSettings();
   connectivity.loop(millis());
+  // New firmware counts as good once it is on the Wi-Fi with the web page running.
+  firmwareUpdate.loop(connectivity.connected() && webUi.running(), millis());
   powerCycles.tick(millis());
 
   // Live audio view: read the snapshot (the LED task consumes the queue).

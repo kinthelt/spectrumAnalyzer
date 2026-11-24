@@ -5,6 +5,7 @@
 //   GET  /api/state            -> stateJson()
 //   POST /api/state            on, mode, brightness, colourA, colourB, spectrumColour
 //   POST /api/preset/<action>  save (slot, name?), recall (slot), rename (slot, name), delete (slot)
+//   (POST /api/action/<name> and POST /api/update are handled in WebUi.)
 //
 // POST bodies are form fields (application/x-www-form-urlencoded). Changes are
 // all or nothing: if any field is invalid, nothing changes and the error names it.
@@ -35,6 +36,9 @@ struct DeviceStatus {
   bool learningNoise = false;
   int32_t audioLoadPercent = 0;
   uint32_t uptimeSeconds = 0;
+  uint32_t updateMaxBytes = 0;    // largest firmware file the spare slot takes
+  bool updateOnTrial = false;     // just updated; not yet declared good
+  bool updateLastUndone = false;  // the last update was undone (previous firmware came back)
 };
 
 namespace web_api {
