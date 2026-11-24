@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Spectrum Lights</title>
+<style>
+/* Clean, readable, one column on phones. Follows the phone's light/dark setting. */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --text: #16191e; --muted: #5d6573; --line: #e1e4e9;
+  --accent: #0d7a6f; --accent-text: #ffffff; --danger: #b42318; --focus: #0d7a6f;
+  --radius: 14px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1114; --surface: #191c21; --text: #eef0f3; --muted: #9ba3b0; --line: #2b3038;
+    --accent: #3cc7b6; --accent-text: #06201d; --danger: #ff8a7a; --focus: #3cc7b6;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 var(--font);
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+main, .view { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+[hidden] { display: none !important; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600;
+     text-transform: uppercase; letter-spacing: 0.06em; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px 0; }
+.sub { color: var(--muted); font-size: 14px; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn { min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line);
+       background: var(--surface); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+.btn.danger { color: var(--danger); }
+.btn.danger.solid { background: var(--danger); color: #fff; border-color: transparent; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > .btn { flex: 1 1 140px; }
+
+/* Power switch */
+.power { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 6px 6px 14px;
+         border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.power .knob { width: 52px; height: 32px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; }
+.power .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px;
+                      border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: left .15s; }
+.power[aria-checked="true"] .knob { background: var(--accent); }
+.power[aria-checked="true"] .knob::after { left: 23px; }
+
+/* Brightness */
+.slider-head { display: flex; justify-content: space-between; align-items: baseline; }
+.value { font-variant-numeric: tabular-nums; color: var(--muted); }
+input[type=range] { width: 100%; height: 44px; accent-color: var(--accent); margin: 0; }
+
+/* Mode chooser */
+.modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mode { text-align: left; padding: 10px 12px; min-height: 60px; border-radius: 10px; border: 1px solid var(--line);
+        background: var(--surface); cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+.mode b { font-weight: 600; font-size: 15px; }
+.mode span { color: var(--muted); font-size: 13px; }
+.mode[aria-checked="true"] { border: 2px solid var(--accent); padding: 9px 11px; }
+
+/* Colours */
+.colour-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+#colour-card { display: flex; flex-direction: column; gap: 6px; }
+#colour-card h2 { margin-bottom: 4px; }
+input[type=color] { width: 64px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 10px;
+                    background: none; cursor: pointer; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { min-height: 44px; border: 0; background: var(--surface); cursor: pointer; }
+.seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.note { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* Presets */
+.presets { display: flex; flex-direction: column; gap: 8px; }
+.preset { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+          padding: 8px 8px 8px 10px; border: 1px solid var(--line); border-radius: 10px; min-height: 56px; }
+.add-preset { width: 100%; border-style: dashed; color: var(--muted); }
+.swatch { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); }
+.preset .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none;
+                border: 0; text-align: left; padding: 8px 0; cursor: pointer; font-weight: 600; min-height: 44px; }
+
+.preset .btn { min-height: 40px; padding: 6px 12px; }
+
+/* Settings view */
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 15px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.action { display: flex; flex-direction: column; gap: 8px; }
+.action + .action { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.action p { margin: 0; color: var(--muted); font-size: 14px; }
+.action .btn { align-self: flex-start; }
+.back { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 10px 4px;
+        min-height: 44px; cursor: pointer; color: var(--accent); font-weight: 600; }
+
+/* Dialogs */
+dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text);
+         padding: 20px; width: min(420px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog h3 { margin: 0 0 8px; font-size: 18px; }
+dialog p { margin: 0 0 14px; color: var(--muted); }
+dialog label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+input[type=text] { width: 100%; min-height: 44px; font: inherit; padding: 8px 12px; border-radius: 10px;
+                   border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.dialog-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.qr { background: #fff; border-radius: 10px; padding: 10px; width: min(260px, 70vw); margin: 4px auto 12px; }
+.qr svg { display: block; width: 100%; height: auto; }
+.url { font: 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center;
+       overflow-wrap: anywhere; user-select: all; margin: 0 0 4px; color: var(--text); }
+
+/* Toast and connection banner */
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+         background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; max-width: calc(100vw - 32px);
+         box-shadow: 0 4px 16px rgba(0,0,0,.25); font-size: 15px; z-index: 10; }
+.banner { background: var(--danger); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 15px; }
+footer.row { margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- ======================= Main view ======================= -->
+<main id="main-view" class="view">
+  <div class="top">
+    <div>
+      <h1>Spectrum Lights</h1>
+      <div class="sub" id="sound-state">Connecting…</div>
+    </div>
+    <button class="power" id="power" role="switch" aria-checked="false" aria-label="Lights on or off">
+      <span id="power-label">Off</span><span class="knob" aria-hidden="true"></span>
+    </button>
+  </div>
+
+  <div class="banner" id="offline" hidden>Can't reach the lights. Are you on the same Wi-Fi?</div>
+
+  <section class="card" aria-labelledby="h-bright">
+    <div class="slider-head"><h2 id="h-bright">Brightness</h2><span class="value" id="bright-value">–</span></div>
+    <input type="range" id="brightness" min="1" max="255" step="1" aria-labelledby="h-bright">
+  </section>
+
+  <section class="card" aria-labelledby="h-mode">
+    <h2 id="h-mode">Mode</h2>
+    <div class="modes" id="modes" role="radiogroup" aria-labelledby="h-mode"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-colour" id="colour-card">
+    <h2 id="h-colour">Colour</h2>
+    <div id="spectrum-colour" class="colour-row">
+      <span>Spectrum colour</span>
+      <div class="seg" role="radiogroup" aria-label="Spectrum colour">
+        <button role="radio" data-sc="rainbow" aria-checked="true">Rainbow</button>
+        <button role="radio" data-sc="fixed" aria-checked="false">Fixed</button>
+      </div>
+    </div>
+    <label class="colour-row" id="colour-a-row"><span id="colour-a-label">Colour</span>
+      <input type="color" id="colour-a" aria-labelledby="colour-a-label"></label>
+    <label class="colour-row" id="colour-b-row"><span>Right end</span>
+      <input type="color" id="colour-b"></label>
+    <p class="note" id="colour-note" hidden>Rainbow slowly cycles through every colour.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-presets">
+    <h2 id="h-presets">Presets</h2>
+    <div class="presets" id="presets"></div>
+  </section>
+
+  <footer class="row">
+    <button class="btn" id="share-btn">Share this page</button>
+    <button class="btn" id="settings-btn">Settings</button>
+  </footer>
+</main>
+
+<!-- ======================= Settings view ======================= -->
+<div id="settings-view" class="view" hidden>
+  <div><button class="back" id="back-btn">‹ Back</button></div>
+  <h1>Settings</h1>
+
+  <section class="card" aria-labelledby="h-status">
+    <h2 id="h-status">Status</h2>
+    <dl class="facts" id="facts"></dl>
+  </section>
+
+  <section class="card" aria-labelledby="h-actions">
+    <h2 id="h-actions">Maintenance</h2>
+    <div class="action">
+      <b>Learn room noise</b>
+      <p>For when a new steady sound (a fan, an air purifier) makes the spectrum flicker.
+         Turn music off first: the lights treat whatever they hear for 10 seconds as background.</p>
+      <button class="btn" id="learn-btn">Learn room noise…</button>
+    </div>
+    <div class="action">
+      <b>Forget Wi-Fi</b>
+      <p>For a new router or password. The lights leave this network and open their own,
+         <b>Spectrum-Setup</b>, for entering new Wi-Fi details. This page stops working until then.</p>
+      <button class="btn danger" id="forget-btn">Forget Wi-Fi…</button>
+    </div>
+    <div class="action">
+      <b>Reset settings</b>
+      <p>Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.</p>
+      <button class="btn danger" id="reset-btn">Reset settings…</button>
+    </div>
+  </section>
+</div>
+
+<!-- ======================= Dialogs ======================= -->
+<dialog id="preset-dialog" aria-labelledby="preset-title">
+  <form method="dialog" id="preset-form">
+    <h3 id="preset-title">Preset</h3>
+    <p id="preset-text"></p>
+    <label for="preset-name">Name</label>
+    <input type="text" id="preset-name" maxlength="24" autocomplete="off" enterkeyhint="done">
+    <!-- The main button comes first in the markup so Enter/"Done" on a phone
+         keyboard triggers it (never Delete); CSS order puts it on the right. -->
+    <div class="dialog-buttons">
+      <button class="btn primary" value="ok" id="preset-ok" style="order: 4">Save</button>
+      <button class="btn danger" value="delete" id="preset-delete" style="order: 1">Delete</button>
+      <button class="btn" value="overwrite" id="preset-overwrite" style="order: 2">Save current look</button>
+      <button class="btn" value="cancel" style="order: 3">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-text"></p>
+    <div class="dialog-buttons">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn primary" value="ok" id="confirm-ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog" aria-labelledby="share-title">
+  <form method="dialog">
+    <h3 id="share-title">Share the lights</h3>
+    <p>Anyone on this Wi-Fi can scan this to open the page.</p>
+    <div class="qr" id="qr" role="img" aria-label="QR code of the page address"></div>
+    <p class="url" id="share-url"></p>
+    <p class="note" id="share-local" style="text-align:center"></p>
+    <div class="dialog-buttons">
+      <button class="btn" type="button" id="copy-btn">Copy link</button>
+      <button class="btn primary" value="close">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Spectrum Lights web page. Talks to the firmware's API:
+//   GET  /api/state                  everything the page shows
+//   POST /api/state                  on, mode, brightness, colourA, colourB, spectrumColour
+//   POST /api/preset/<action>        save | recall | rename | delete (slot, name)
+//   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
+// Every POST answers with the new state (or {"error": "..."}).
+// ---------------------------------------------------------------------------
+
+const MODES = {
+  "spectrum-snappy": ["Snappy spectrum", "Punchy, flashes on beats"],
+  "spectrum-smooth": ["Smooth spectrum", "Flowing, peaks linger"],
+  "solid":           ["Solid", "One colour"],
+  "gradient":        ["Gradient", "Blend from end to end"],
+  "rainbow":         ["Rainbow", "Slowly cycles colours"],
+  "twinkle":         ["Twinkle", "Sparkling stars"],
+};
+const POLL_MS = 2000;       // how often to pick up changes made on other phones
+const LIVE_MS = 100;        // live controls send at most this often while dragging
+const QUIET_MS = 800;       // after the last touch, wait this long before accepting polled values
+
+const $ = (id) => document.getElementById(id);
+let state = null;
+let lastTouch = 0;          // when the user last moved a live control
+
+// ---- Talking to the lights ------------------------------------------------
+function form(params) {
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) body.append(k, String(v));
+  return body;
+}
+
+async function call(path, params) {
+  try {
+    const res = await fetch(path, params === undefined ? { cache: "no-store" } : {
+      method: "POST", body: form(params),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    const data = await res.json();
+    setOnline(true);
+    if (!res.ok || data.error) { toast(data.error || "Something went wrong"); return null; }
+    if (data.revision !== undefined) render(data);
+    return data;
+  } catch (e) {
+    setOnline(false);
+    return null;
+  }
+}
+
+// Live controls: send the newest value at most every LIVE_MS, one request at a time.
+function liveSender(field) {
+  let pending = null, busy = false, last = 0, timer = null;
+  async function flush() {
+    timer = null;
+    if (busy || pending === null) return;
+    const wait = LIVE_MS - (Date.now() - last);
+    if (wait > 0) { timer = setTimeout(flush, wait); return; }
+    const value = pending; pending = null; busy = true; last = Date.now();
+    await call("/api/state", { [field]: value });
+    busy = false;
+    if (pending !== null) flush();
+  }
+  return (value) => { lastTouch = Date.now(); pending = value; if (!timer) flush(); };
+}
+
+// ---- Drawing the page from the state ----------------------------------------
+function render(s) {
+  state = s;
+  const touching = Date.now() - lastTouch < QUIET_MS;
+
+  $("power").setAttribute("aria-checked", String(s.on));
+  $("power-label").textContent = s.on ? "On" : "Off";
+  if (!touching) $("brightness").value = Math.max(1, s.brightness);
+  $("bright-value").textContent = Math.round(Math.max(1, s.brightness) / 255 * 100) + "%";
+
+  for (const b of $("modes").children) b.setAttribute("aria-checked", String(b.dataset.mode === s.mode));
+
+  const spectrum = s.mode.startsWith("spectrum");
+  const fixed = s.spectrumColour === "fixed";
+  $("spectrum-colour").hidden = !spectrum;
+  for (const b of document.querySelectorAll("[data-sc]")) b.setAttribute("aria-checked", String(b.dataset.sc === s.spectrumColour));
+  $("colour-a-row").hidden = s.mode === "rainbow" || (spectrum && !fixed);
+  $("colour-b-row").hidden = s.mode !== "gradient";
+  $("colour-a-label").textContent = s.mode === "gradient" ? "Left end" : "Colour";
+  $("colour-note").hidden = !(s.mode === "rainbow" || (spectrum && !fixed));
+  $("colour-note").textContent = spectrum ? "The whole strip slowly cycles through every colour."
+                                          : "Rainbow slowly cycles through every colour.";
+  if (!touching) { $("colour-a").value = s.colourA.toLowerCase(); $("colour-b").value = s.colourB.toLowerCase(); }
+
+  renderPresets(s.presets);
+  renderStatus(s);
+}
+
+function swatchStyle(p) {
+  if (p.mode === "rainbow" || (p.mode.startsWith("spectrum") && p.spectrumColour === "rainbow"))
+    return "conic-gradient(#f33,#fd3,#3e5,#3cf,#55f,#e3e,#f33)";
+  if (p.mode === "gradient") return `linear-gradient(90deg, ${p.colourA}, ${p.colourB})`;
+  return p.colourA;
+}
+
+function renderPresets(presets) {
+  // Saved presets, then one button to save into the first free slot. Empty
+  // slots aren't listed: guests only see what's there to use.
+  const list = $("presets");
+  list.replaceChildren();
+  for (const p of presets.filter((p) => p.used)) {
+    const row = document.createElement("div");
+    row.className = "preset";
+    const sw = document.createElement("div");
+    sw.className = "swatch";
+    sw.style.background = swatchStyle(p);
+    const name = document.createElement("button");
+    name.className = "name";
+    name.textContent = p.name;
+    name.setAttribute("aria-label", "Use preset " + p.name);
+    name.onclick = () => call("/api/preset/recall", { slot: p.slot }).then((d) => d && toast("“" + p.name + "”"));
+    const edit = document.createElement("button");
+    edit.className = "btn";
+    edit.textContent = "Edit";
+    edit.setAttribute("aria-label", "Edit preset " + p.name);
+    edit.onclick = () => openPreset(p);
+    row.append(sw, name, edit);
+    list.append(row);
+  }
+  const free = presets.find((p) => !p.used);
+  const add = document.createElement("button");
+  add.className = "btn add-preset";
+  add.id = "add-preset";
+  if (free) {
+    add.textContent = "+ Save current look as a preset";
+    add.onclick = () => openPreset(free);
+  } else {
+    add.textContent = "All 8 presets are in use: edit one to replace it";
+    add.disabled = true;
+  }
+  list.append(add);
+}
+
+function fact(dl, label, value) {
+  const dt = document.createElement("dt"); dt.textContent = label;
+  const dd = document.createElement("dd"); dd.textContent = value;
+  dl.append(dt, dd);
+}
+
+function renderStatus(s) {
+  const st = s.status, a = st.audio, w = st.wifi;
+  $("sound-state").textContent = !s.on ? "Lights off" : !a.ok ? "No microphone" :
+      a.learningNoise ? "Learning room noise…" : a.silent ? "Quiet" : "Hearing sound";
+  const dl = $("facts");
+  dl.replaceChildren();
+  fact(dl, "Wi-Fi", w.connected ? `${w.ssid} (${signal(w.rssi)})` : "Not connected");
+  fact(dl, "Address", w.ip ? `${w.url}  ·  ${w.localUrl}` : "–");
+  fact(dl, "Microphone", !a.ok ? "Not working" : a.learningNoise ? "Learning room noise" : a.silent ? "Quiet" : "Hearing sound");
+  fact(dl, "Audio load", a.loadPercent + "% of one core");
+  fact(dl, "Running for", duration(st.uptime));
+  fact(dl, "Firmware", st.version);
+}
+
+function signal(rssi) {
+  const word = rssi >= -60 ? "strong" : rssi >= -70 ? "good" : rssi >= -80 ? "weak" : "very weak";
+  return `${word} signal, ${rssi} dBm`;
+}
+function duration(sec) {
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+
+// ---- Controls ---------------------------------------------------------------
+function buildModes() {
+  for (const [id, [label, desc]] of Object.entries(MODES)) {
+    const b = document.createElement("button");
+    b.className = "mode"; b.dataset.mode = id; b.setAttribute("role", "radio");
+    const t = document.createElement("b"); t.textContent = label;
+    const d = document.createElement("span"); d.textContent = desc;
+    b.append(t, d);
+    b.onclick = () => call("/api/state", { mode: id });
+    $("modes").append(b);
+  }
+}
+
+const sendBrightness = liveSender("brightness");
+const sendColourA = liveSender("colourA");
+const sendColourB = liveSender("colourB");
+
+$("power").onclick = () => state && call("/api/state", { on: state.on ? 0 : 1 });
+$("brightness").addEventListener("input", (e) => {
+  $("bright-value").textContent = Math.round(e.target.value / 255 * 100) + "%";
+  sendBrightness(e.target.value);
+});
+$("colour-a").addEventListener("input", (e) => sendColourA(e.target.value));
+$("colour-b").addEventListener("input", (e) => sendColourB(e.target.value));
+for (const b of document.querySelectorAll("[data-sc]")) b.onclick = () => call("/api/state", { spectrumColour: b.dataset.sc });
+
+// ---- Presets dialog -----------------------------------------------------------
+function openPreset(p) {
+  const dlg = $("preset-dialog");
+  $("preset-title").textContent = p.used ? "Edit preset" : "New preset";
+  $("preset-text").textContent = p.used
+    ? "Rename it, replace it with the current look, or delete it."
+    : "Saves the current mode, colours and brightness.";
+  $("preset-name").value = p.used ? p.name : "";
+  $("preset-name").placeholder = `Preset ${p.slot}`;
+  $("preset-delete").hidden = !p.used;
+  $("preset-overwrite").hidden = !p.used;
+  $("preset-ok").textContent = p.used ? "Rename" : "Save";
+  dlg.onclose = async () => {
+    const name = $("preset-name").value;
+    switch (dlg.returnValue) {
+      case "ok":
+        if (p.used) await call("/api/preset/rename", { slot: p.slot, name });
+        else await call("/api/preset/save", { slot: p.slot, name }).then((d) => d && toast("Saved"));
+        break;
+      case "overwrite":
+        await call("/api/preset/save", { slot: p.slot, name }).then((d) => d && toast("Saved the current look"));
+        break;
+      case "delete":
+        confirmThen("Delete this preset?", `“${p.name}” will be removed.`, "Delete",
+                    () => call("/api/preset/delete", { slot: p.slot }));
+        break;
+    }
+  };
+  dlg.returnValue = "";
+  dlg.showModal();
+  if (!p.used) $("preset-name").focus();
+}
+
+// ---- Confirmations and settings actions --------------------------------------------
+function confirmThen(title, text, okLabel, action) {
+  const dlg = $("confirm-dialog");
+  $("confirm-title").textContent = title;
+  $("confirm-text").textContent = text;
+  $("confirm-ok").textContent = okLabel;
+  dlg.returnValue = "";
+  dlg.onclose = () => { if (dlg.returnValue === "ok") action(); };
+  dlg.showModal();
+}
+
+$("learn-btn").onclick = () => confirmThen("Learn room noise?",
+  "Is the music off? For the next 10 seconds the lights treat everything they hear as background.",
+  "Start learning", () => call("/api/action/learn-noise", {}).then((d) => d && toast("Learning for 10 seconds…")));
+$("forget-btn").onclick = () => confirmThen("Forget Wi-Fi?",
+  "The lights leave this network and open “Spectrum-Setup”. Join that network on a phone to enter new Wi-Fi details. This page will stop working.",
+  "Forget Wi-Fi", () => call("/api/action/forget-wifi", {}).then((d) => d && toast("Forgetting Wi-Fi…")));
+$("reset-btn").onclick = () => confirmThen("Reset settings?",
+  "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.",
+  "Reset", () => call("/api/action/reset-settings", {}).then((d) => d && toast("Settings reset")));
+
+// ---- Share -----------------------------------------------------------------------------------
+$("share-btn").onclick = () => {
+  const url = (state && state.status.wifi.url) || location.href;
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+  $("share-url").textContent = url;
+  $("share-local").textContent = state ? `iPhones can also use ${state.status.wifi.localUrl}` : "";
+  $("share-dialog").showModal();
+};
+$("copy-btn").onclick = async () => {
+  const url = $("share-url").textContent;
+  try {
+    await navigator.clipboard.writeText(url);   // only on https; plain http falls back below
+    toast("Link copied");
+  } catch (e) {
+    const range = document.createRange();
+    range.selectNodeContents($("share-url"));
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    toast("Link selected: copy it from the menu");
+  }
+};
+
+// ---- Views, toast, connection state -------------------------------------------------------
+function showView() {
+  const settings = location.hash === "#settings";
+  $("main-view").hidden = settings;
+  $("settings-view").hidden = !settings;
+  window.scrollTo(0, 0);
+}
+$("settings-btn").onclick = () => { location.hash = "settings"; };
+$("back-btn").onclick = () => { history.length > 1 ? history.back() : (location.hash = ""); };
+window.addEventListener("hashchange", showView);
+
+let toastTimer = null;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2500);
+}
+
+function setOnline(online) { $("offline").hidden = online; }
+
+// ---- Start ---------------------------------------------------------------------------------
+buildModes();
+showView();
+call("/api/state");
+setInterval(() => {
+  if (!document.hidden && Date.now() - lastTouch > QUIET_MS) call("/api/state");
+}, POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) call("/api/state"); });
+</script>
+</body>
+</html>
