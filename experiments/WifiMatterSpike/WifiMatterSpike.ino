@@ -23,6 +23,7 @@
 #include <Matter.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_netif.h>
 #include <esp_system.h>
 
 #include <atomic>
@@ -65,22 +66,42 @@ static void loadProbe(void*) {
   }
 }
 
+// ---- Network state -----------------------------------------------------------------
+// Matter starts Wi-Fi through ESP-IDF directly, so Arduino's WiFi.status() never
+// learns it's connected. Ask the network layer for the station's IP instead.
+static bool stationIp(esp_ip4_addr_t* out) {
+  esp_netif_t* sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (sta == nullptr) return false;
+  esp_netif_ip_info_t info;
+  if (esp_netif_get_ip_info(sta, &info) != ESP_OK || info.ip.addr == 0) return false;
+  *out = info.ip;
+  return true;
+}
+
+static String ipText() {
+  esp_ip4_addr_t ip;
+  if (!stationIp(&ip)) return "-";
+  char buf[16];
+  snprintf(buf, sizeof(buf), IPSTR, IP2STR(&ip));
+  return buf;
+}
+
 // ---- Network services: mDNS name and a test page --------------------------------
 static void startNetServices() {
   if (MDNS.begin("spectrum")) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.println("mDNS: started as spectrum.local");
+    const bool service = MDNS.addService("http", "tcp", 80);
+    Serial.printf("mDNS: started as spectrum.local (http service %s)\n", service ? "added" : "NOT added");
   } else {
-    Serial.println("mDNS: FAILED to start");
+    Serial.println("mDNS: FAILED to start (Matter may already own mDNS)");
   }
   web.on("/", []() {
-    String page = "Spectrum spike OK\nIP " + WiFi.localIP().toString() +
+    String page = "Spectrum spike OK\nIP " + ipText() +
                   "\nMatter commissioned: " + (Matter.isDeviceCommissioned() ? "yes" : "no") +
                   "\nLight: " + (light.getOnOff() ? "on" : "off") + "\n";
     web.send(200, "text/plain", page);
   });
   web.begin();
-  Serial.printf("Web: open http://spectrum.local or http://%s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Web: open http://spectrum.local or http://%s\n", ipText().c_str());
   netServicesStarted = true;
 }
 
@@ -94,10 +115,9 @@ static void printPairingInfo() {
 }
 
 static void printStatus() {
-  const bool wifiUp = WiFi.status() == WL_CONNECTED;
-  Serial.printf("wifi %s %s rssi %d | matter paired %d online %d | heap %lu | ",
-                wifiUp ? "UP" : "down", wifiUp ? WiFi.localIP().toString().c_str() : "-",
-                wifiUp ? WiFi.RSSI() : 0, Matter.isDeviceCommissioned(), Matter.isOnline(),
+  Serial.printf("ip %s (arduino wifi %s, matter wifi %d) | matter paired %d online %d | heap %lu | ",
+                ipText().c_str(), WiFi.status() == WL_CONNECTED ? "UP" : "down",
+                Matter.isWiFiConnected(), Matter.isDeviceCommissioned(), Matter.isOnline(),
                 (unsigned long)ESP.getFreeHeap());
   Serial.printf("core-0 probe: %lu runs, longest gap %lu us, gaps >30 ms: %lu\n",
                 (unsigned long)probeRuns.load(), (unsigned long)probeMaxGapUs.load(),
@@ -176,7 +196,8 @@ void loop() {
   static uint32_t lastStatus = 0;
   handleSerial();
 
-  if (!netServicesStarted && WiFi.status() == WL_CONNECTED) startNetServices();
+  esp_ip4_addr_t ip;
+  if (!netServicesStarted && stationIp(&ip)) startNetServices();
   if (netServicesStarted) web.handleClient();
 
   if (millis() - lastStatus >= 5000) {
