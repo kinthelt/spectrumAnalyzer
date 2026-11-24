@@ -282,3 +282,95 @@ TEST(shared_value_never_tears_between_threads) {
   CHECK(versionsIncrease);
   CHECK(shared.version() > 0);
 }
+
+// ---- Preset names ---------------------------------------------------------------------
+
+#include <cstring>
+
+#include "settings/PresetName.h"
+
+TEST(preset_name_tidying) {
+  char out[kPresetNameMaxBytes + 1];
+  tidyPresetName("  Movie night  ", 0, out);
+  CHECK(std::string(out) == "Movie night");
+  tidyPresetName("Party\ttime\n", 0, out);   // control characters dropped
+  CHECK(std::string(out) == "Partytime");
+  tidyPresetName("", 2, out);
+  CHECK(std::string(out) == "Preset 3");
+  tidyPresetName("   ", 7, out);
+  CHECK(std::string(out) == "Preset 8");
+  tidyPresetName(nullptr, 0, out);
+  CHECK(std::string(out) == "Preset 1");
+  tidyPresetName("abcdefghijklmnopqrstuvwxyz0123", 0, out);   // 30 chars -> 24
+  CHECK(std::string(out) == "abcdefghijklmnopqrstuvwx");
+}
+
+TEST(preset_name_never_splits_a_character) {
+  char out[kPresetNameMaxBytes + 1];
+  // 23 ASCII + "é" (2 bytes) = 25 bytes: the é doesn't fit and must go whole.
+  tidyPresetName("abcdefghijklmnopqrstuvwé", 0, out);
+  CHECK(std::string(out) == "abcdefghijklmnopqrstuvw");
+  // 22 ASCII + "🎵" (4 bytes) = 26: the emoji goes whole.
+  tidyPresetName("abcdefghijklmnopqrstuv\xF0\x9F\x8E\xB5", 0, out);
+  CHECK(std::string(out) == "abcdefghijklmnopqrstuv");
+  // Fits exactly: 20 ASCII + emoji = 24 bytes, kept.
+  tidyPresetName("abcdefghijklmnopqrst\xF0\x9F\x8E\xB5", 0, out);
+  CHECK(std::strlen(out) == 24);
+  // Accented names survive untouched.
+  tidyPresetName("Café ☕", 0, out);
+  CHECK(std::string(out) == "Café ☕");
+}
+
+TEST(preset_names_save_rename_delete_and_survive_restart) {
+  FakeSettingsStore store;
+  {
+    SettingsManager m(store);
+    m.begin();
+    CHECK(std::string(m.presetName(0)) == "Preset 1");
+    CHECK(m.savePreset(0, "Movie night"));
+    CHECK(std::string(m.presetName(0)) == "Movie night");
+    CHECK(m.savePreset(1));   // no name given: default
+    CHECK(std::string(m.presetName(1)) == "Preset 2");
+    CHECK(m.renamePreset(1, " Party "));
+    CHECK(std::string(m.presetName(1)) == "Party");
+    CHECK(!m.renamePreset(5, "Nope"));   // empty slot can't be renamed
+    CHECK(m.savePreset(1));              // re-saving keeps the name
+    CHECK(std::string(m.presetName(1)) == "Party");
+  }
+  SettingsManager restarted(store);
+  restarted.begin();
+  CHECK(std::string(restarted.presetName(0)) == "Movie night");
+  CHECK(std::string(restarted.presetName(1)) == "Party");
+  CHECK(restarted.deletePreset(0));
+  CHECK(std::string(restarted.presetName(0)) == "Preset 1");
+  SettingsManager again(store);
+  again.begin();
+  CHECK(!again.presetUsed(0));
+  CHECK(std::string(again.presetName(0)) == "Preset 1");   // name removed from flash too
+}
+
+TEST(presets_saved_before_names_existed_get_default_names) {
+  FakeSettingsStore store;
+  {
+    SettingsManager m(store);
+    m.begin();
+    m.savePreset(3);
+  }
+  store.data.erase("n3");   // as if saved by the step-2 firmware: no name entry
+  SettingsManager m(store);
+  m.begin();
+  CHECK(m.presetUsed(3));
+  CHECK(std::string(m.presetName(3)) == "Preset 4");
+}
+
+TEST(preset_rename_bumps_revision_and_factory_reset_clears_names) {
+  FakeSettingsStore store;
+  SettingsManager m(store);
+  m.begin();
+  m.savePreset(2, "Chill");
+  const uint32_t r = m.revision();
+  m.renamePreset(2, "Chill out");
+  CHECK(m.revision() != r);
+  m.factoryReset();
+  CHECK(std::string(m.presetName(2)) == "Preset 3");
+}

@@ -37,7 +37,8 @@ void SerialConsole::printHelp() {
       "                         spectrum-snappy, spectrum-smooth\n"
       "  colour a|b <RRGGBB>    set colour A or B, e.g. colour a FF8000\n"
       "  spectrum rainbow|fixed spectrum colouring\n"
-      "  save <1-8>             save current settings as a preset\n"
+      "  save <1-8> [name]      save current settings as a preset, optionally named\n"
+      "  rename <1-8> <name>    rename a saved preset\n"
       "  recall <1-8>           load a preset\n"
       "  delete <1-8>           delete a preset\n"
       "  audio                  start/stop the live audio view (5 lines a second)\n"
@@ -65,15 +66,19 @@ void SerialConsole::printStatus() {
     }
     formatHexColour(p->colourA, a);
     formatHexColour(p->colourB, b);
-    Serial.printf("  preset %d: %s, brightness %u, A %s, B %s, spectrum %s\n", slot + 1,
-                  modeName(p->mode), p->brightness, a, b, spectrumColourName(p->spectrumColour));
+    Serial.printf("  preset %d \"%s\": %s, brightness %u, A %s, B %s, spectrum %s\n", slot + 1,
+                  settings_.presetName(slot), modeName(p->mode), p->brightness, a, b,
+                  spectrumColourName(p->spectrumColour));
   }
 }
 
 void SerialConsole::runLine(char* line) {
   const char* cmd = std::strtok(line, " ");
   const char* arg1 = std::strtok(nullptr, " ");
-  const char* arg2 = std::strtok(nullptr, " ");
+  // Everything after the first argument, spaces included (preset names).
+  const char* arg2 = std::strtok(nullptr, "");
+  while (arg2 != nullptr && *arg2 == ' ') ++arg2;
+  if (arg2 != nullptr && *arg2 == '\0') arg2 = nullptr;
   const uint32_t now = millis();
   if (cmd == nullptr) return;
 
@@ -138,13 +143,21 @@ void SerialConsole::runLine(char* line) {
     }
     bool ok;
     if (cmd[0] == 's') {
-      ok = settings_.savePreset(slot);
+      ok = settings_.savePreset(slot, arg2);   // optional name: rest of the line
     } else if (cmd[0] == 'r') {
       ok = settings_.recallPreset(slot, now);
     } else {
       ok = settings_.deletePreset(slot);
     }
     if (!ok) Serial.printf("Preset %d: %s failed (empty slot?)\n", slot + 1, cmd);
+    printStatus();
+  } else if (std::strcmp(cmd, "rename") == 0) {
+    int slot;
+    if (!parseSlot(arg1, &slot) || arg2 == nullptr) {
+      Serial.println("Use: rename <1-8> <new name>");
+      return;
+    }
+    if (!settings_.renamePreset(slot, arg2)) Serial.printf("Preset %d is empty\n", slot + 1);
     printStatus();
   } else if (std::strcmp(cmd, "audio") == 0) {
     audioMonitor_.setEnabled(!audioMonitor_.enabled());

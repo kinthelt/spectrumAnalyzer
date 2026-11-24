@@ -10,6 +10,7 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/settings/LightSettings.cpp \
 	$(SRC_DIR)/settings/SettingsCodec.cpp \
 	$(SRC_DIR)/settings/SettingsManager.cpp \
+	$(SRC_DIR)/settings/PresetName.cpp \
 	$(SRC_DIR)/util/Rgb.cpp \
 	$(SRC_DIR)/modes/ModeManager.cpp \
 	$(SRC_DIR)/modes/TwinkleMode.cpp \
@@ -17,16 +18,20 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/audio/FilterBank.cpp \
 	$(SRC_DIR)/audio/LevelTracker.cpp \
 	$(SRC_DIR)/net/WifiStateMachine.cpp \
-	$(SRC_DIR)/net/PowerCycleCounter.cpp
+	$(SRC_DIR)/net/PowerCycleCounter.cpp \
+	$(SRC_DIR)/util/JsonWriter.cpp \
+	$(SRC_DIR)/web/WebApi.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests
 
 .PHONY: all clean
 all: $(BIN)
+	@mkdir -p $(BUILD)/json
 	./$(BIN)
+	@python3 -c 'import glob, json, sys; files = sorted(glob.glob("$(BUILD)/json/*.json")); [json.load(open(f, encoding="utf-8")) for f in files]; print(f"{len(files)} JSON samples parse as valid JSON")' 
 
 $(BIN): $(FIRMWARE_SOURCES) $(TEST_SOURCES) $(wildcard *.h) $(wildcard $(SRC_DIR)/*/*.h)
 	@mkdir -p $(BUILD)

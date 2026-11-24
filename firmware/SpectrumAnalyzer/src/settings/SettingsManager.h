@@ -14,6 +14,7 @@
 #include <cstdint>
 
 #include "LightSettings.h"
+#include "PresetName.h"
 #include "SettingsStore.h"
 
 class SettingsManager {
@@ -48,11 +49,16 @@ class SettingsManager {
   void flush();
   bool hasUnsavedChanges() const { return dirty_; }
 
-  // Presets: slot is 0..kPresetCount-1. A preset stores mode, colours and
-  // brightness; recalling one keeps the current on/off state.
+  // Presets: slot is 0..kPresetCount-1. A preset stores mode, colours,
+  // brightness and a name; recalling one keeps the current on/off state.
   bool presetUsed(int slot) const;
   const LightSettings* preset(int slot) const;   // nullptr if empty or out of range
-  bool savePreset(int slot);
+  // The slot's name; "Preset N" if never named (or the slot is empty).
+  const char* presetName(int slot) const;
+  // Saves the current settings into the slot. name: nullptr keeps the slot's
+  // existing name; otherwise it is tidied (see tidyPresetName).
+  bool savePreset(int slot, const char* name = nullptr);
+  bool renamePreset(int slot, const char* name);   // only a saved preset
   bool recallPreset(int slot, uint32_t nowMillis);
   bool deletePreset(int slot);
 
@@ -61,6 +67,8 @@ class SettingsManager {
 
  private:
   static void presetKey(int slot, char* buf);   // "p0".."p7"
+  static void nameKey(int slot, char* buf);     // "n0".."n7"
+  bool writeName(int slot, const char* tidied);
   bool validSlot(int slot) const { return slot >= 0 && slot < kPresetCount; }
   bool writeCurrent();
 
@@ -69,6 +77,7 @@ class SettingsManager {
   LightSettings lastSaved_;
   LightSettings presets_[kPresetCount];
   bool presetUsed_[kPresetCount] = {};
+  char names_[kPresetCount][kPresetNameMaxBytes + 1] = {};
   bool dirty_ = false;
   uint32_t lastChangeMillis_ = 0;
   uint32_t revision_ = 0;
