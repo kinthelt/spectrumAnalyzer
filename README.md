@@ -15,6 +15,29 @@ entering your Wi-Fi details; after that it's at **http://spectrum.local** (a sta
 until step 7). Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
 settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
 
+## Building from the command line
+
+`tools/build.sh` wraps [arduino-cli](https://arduino.github.io/arduino-cli/) with the board
+settings below, so they live in one place. arduino-cli uses the same `~/.arduino15` board
+package and libraries as the Arduino IDE. One-time install:
+
+```bash
+mkdir -p ~/bin && curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=~/bin sh
+```
+
+| Command | Does |
+|---|---|
+| `tools/build.sh compile` | Compile only |
+| `tools/build.sh upload [PORT]` | Compile and upload |
+| `tools/build.sh flash [PORT]` | Compile, upload, then open the serial monitor (Ctrl+C quits) |
+| `tools/build.sh monitor [PORT]` | Serial monitor only |
+| `tools/build.sh erase [PORT]` | Compile and upload with **all flash erased** (asks first) |
+| `tools/build.sh test` | Run the PC unit tests |
+| `tools/build.sh ports` | List connected boards |
+
+PORT defaults to the first `/dev/ttyACM*` or `/dev/ttyUSB*`. Close the IDE's Serial Monitor
+before uploading: only one program can use the port.
+
 ## Building the firmware (Arduino IDE)
 
 1. **Boards Manager:** install **esp32 by Espressif Systems**, version **3.3.x**. Don't
