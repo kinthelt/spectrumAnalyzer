@@ -3,7 +3,7 @@
 // The task reads 512-sample blocks from the ICS-43434 over I2S, runs the filter
 // bank and level tracker, and publishes each AudioFrame two ways:
 //   - a one-slot queue (newest wins) that the LED task consumes with latest();
-//   - a shared snapshot that anything else (live view, status page) can read
+//   - a shared snapshot that anything else (live view, web page) can read
 //     with snapshot() without taking frames away from the LEDs.
 #pragma once
 

@@ -10,9 +10,9 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 6 of 10: Wi-Fi. On first start the board opens a **Spectrum-Setup** network for
-entering your Wi-Fi details; after that it's at **http://spectrum.local** (a status page
-until step 7). Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
+Build step 7 of 10: web page. On first start the board opens a **Spectrum-Setup** network for
+entering your Wi-Fi details; after that the web page is at **http://spectrum.local** (or the
+board's IP address, shown under Share on the page). Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
 settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
 
 ## Building from the command line
@@ -83,4 +83,33 @@ on a PC with g++ and make:
 
 ```bash
 make -C test
+```
+
+This also checks that `WebPage.h` matches `web/` (see below).
+
+## Working on the web page
+
+The page is `web/index.html` (one file; the QR-code library in `web/vendor/` is put inside
+it at build time). The firmware serves a gzipped copy from
+`firmware/SpectrumAnalyzer/src/web/WebPage.h`, which is **generated**: after changing
+anything in `web/`, run
+
+```bash
+python3 tools/embed_web.py
+```
+
+and commit the new `WebPage.h` with your change. The Arduino IDE builds from that header.
+
+To try the page without the board, run a stand-in server that answers the same API from
+memory, then open http://localhost:8080 (or this computer's address from a phone):
+
+```bash
+python3 tools/mock_server.py
+```
+
+Browser tests (Playwright with Chromium; phone-sized screens, screenshots in
+`test/build/web/`):
+
+```bash
+node test/web/page_test.js
 ```

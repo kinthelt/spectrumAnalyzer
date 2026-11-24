@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.6.1";
+constexpr const char* kFirmwareVersion = "0.7.0";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------

@@ -4,20 +4,24 @@
     python3 tools/mock_server.py [--port 8080]
 
 then open http://localhost:8080 (or this computer's address from a phone on the same
-Wi-Fi). It serves the page and answers the same API as the firmware (src/web/WebApi.cpp),
-keeping state in memory. GET /__requests lists the requests received (used by the
+Wi-Fi). It serves the page exactly as the firmware does (built by tools/embed_web.py,
+with the QR library inline) and answers the same API as src/web/WebApi.cpp, keeping
+state in memory. Edits to web/ show up on reload. GET /__requests lists the requests received (used by the
 browser tests).
 """
 import argparse
 import json
 import re
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from embed_web import build_page  # noqa: E402
+
 MODES = ["spectrum-snappy", "spectrum-smooth", "solid", "gradient", "rainbow", "twinkle"]
 NAME_MAX_BYTES = 24
 
@@ -158,9 +162,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/__requests":
                 return self.send(200, json.dumps(LIGHTS.requests))
         if path in ("/", "/index.html"):
-            return self.send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
-        if path == "/vendor/qrcode.js":
-            return self.send(200, (WEB / "vendor" / "qrcode.js").read_bytes(), "text/javascript")
+            return self.send(200, build_page(), "text/html; charset=utf-8")
         self.send(404, json.dumps({"error": "not found"}))
 
     def do_POST(self):

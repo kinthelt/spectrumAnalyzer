@@ -34,7 +34,7 @@ void Connectivity::apply(WifiStateMachine::Action action) {
       WiFi.begin();   // the saved network
       break;
     case WifiStateMachine::Action::StartPortal:
-      page_.stop();   // the setup page needs port 80
+      stopWeb();   // the setup page needs port 80
       manager_.startConfigPortal(config::kSetupNetworkName);
       portalOpen_ = true;
       LOG_INFO("wifi", "setup network '%s' open: join it on a phone to enter Wi-Fi details",
@@ -60,6 +60,7 @@ void Connectivity::loop(uint32_t nowMillis) {
 
   uint32_t ip = 0;
   const bool hasIp = stationIp(&ip);
+  connected_ = hasIp;
   apply(machine_.update(savedNetwork_, hasIp, nowMillis));
 
   if (machine_.state() != WifiStateMachine::State::SetupPortal && portalOpen_) {
@@ -74,18 +75,20 @@ void Connectivity::loop(uint32_t nowMillis) {
 
   name_.update(hasIp, ip);
 
-  // Status page whenever connected and the setup page isn't using port 80.
-  if (hasIp && !portalOpen_) {
-    page_.start();
-  } else {
-    page_.stop();
+  // Web page whenever connected and the setup page isn't using port 80.
+  if (web_ != nullptr) {
+    if (hasIp && !portalOpen_) {
+      web_->start();
+    } else {
+      web_->stop();
+    }
+    web_->loop();
   }
-  page_.loop();
 }
 
 void Connectivity::forgetWifi() {
   LOG_INFO("wifi", "forgetting the saved Wi-Fi");
-  page_.stop();
+  stopWeb();
   manager_.resetSettings();   // erases the saved network
   savedNetwork_ = false;
   apply(machine_.forget(millis()));

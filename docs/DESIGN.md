@@ -95,7 +95,7 @@ Core 0                          Core 1                                    Networ
   frame. When frames were drawn from `loop()`, network work stretched them to 93.7 fps.
 - Data crossing between tasks goes only through `Shared<T>` (a value copied in and out
   under a lock) or the audio queue. No task reads another's live objects.
-- **Settings:** changed only from `loop()` (console now, web page in step 7, Matter in
+- **Settings:** changed only from `loop()` (serial console, web page, and Matter in
   step 9 via `loop()` too), saved to flash a few quiet seconds after the last change.
 
 ### Source layout
@@ -111,8 +111,13 @@ firmware/SpectrumAnalyzer/
   src/modes/                Mode interface + one file per mode
   src/leds/                 FastLED output and current limit
   src/settings/             Settings model, presets, flash persistence
-  src/net/                  WifiSetup, WebUi (+ page as a header), Ota, MatterLight
-test/                       PC-side unit tests for audio and mode logic (g++)
+  src/net/                  Wi-Fi state machine and setup network, spectrum.local, power-cycle trick
+  src/web/                  WebApi (what requests mean; PC-tested), WebUi (HTTP glue), WebPage.h
+                            (generated); Ota and MatterLight to come
+  src/diag/, src/util/      statistics, serial console; logging, colours, JSON, Shared<T>
+web/                        the web page source (index.html, vendor/qrcode.js)
+tools/                      build.sh, embed_web.py (page -> WebPage.h), mock_server.py
+test/                       PC-side unit tests (g++); test/web/ browser tests (Playwright)
 docs/                       this document, wiring notes
 ```
 
@@ -125,7 +130,8 @@ C++ with no Arduino headers, so it is tested on a PC. Hardware code stays thin.
 |---|---|
 | Arduino-ESP32 core 3.x | ESP-IDF 5 I2S driver, Preferences, WebServer, mDNS, Update, Matter |
 | FastLED 3.9+ | LED output on the RMT peripheral, current limiting, colour maths |
-| WiFiManager | Captive-portal Wi-Fi setup *(pending check against core 3.x and Matter)* |
+| WiFiManager (tzapu) | Captive-portal Wi-Fi setup (checked with core 3.3 and Matter in step 6) |
+| qrcode-generator 2.0.4 (MIT) | Share code on the web page; vendored in `web/vendor/`, inlined at build time |
 
 ---
 
@@ -171,7 +177,7 @@ already playing at power-on shows again after the first pause.
 Measured on the hardware (core 3.3.11): analysis takes 4.5 ms of each 10.7 ms block,
 **43% of core 0**; 93.6 blocks/s; LEDs unaffected at 99.8 fps.
 
-CPU use is reported over serial (and later on the web page).
+CPU use is reported over serial and on the web page's Settings view.
 
 ---
 
@@ -225,7 +231,7 @@ working even if Matter misbehaves; Matter later pairs over the network
   the setup network opens. It closes after 10 minutes and the saved network is tried again
   (the router may simply have been off).
 - Ways back into setup without reaching the board in the ceiling:
-  - **Forget Wi-Fi** (Serial Monitor `forget` now; a web-page button in step 7).
+  - **Forget Wi-Fi** (Settings on the web page, or Serial Monitor `forget`).
   - **Power-cycle at the plug three times quickly** (each on-time under 5 s).
 
 Spike findings that shaped the code:
@@ -241,20 +247,48 @@ Spike findings that shaped the code:
 
 ### Web page
 
-- `http://spectrum.local` (mDNS), no password. Some older Android phones don't resolve
-  `.local` names; the page also shows its IP address, and a router address reservation helps.
-- Controls: mode, colours, brightness, on/off, presets (save, recall), Forget Wi-Fi,
-  firmware update, and a status panel (Wi-Fi signal, CPU load, audio level).
-- The page is a single HTML file compiled into the firmware, so there's no separate file
-  upload step in the Arduino IDE.
-- Simple JSON endpoints behind the page (`GET/POST /api/state`, `/api/presets`), which also
-  make scripting or a Homebridge plugin possible later.
+- `http://spectrum.local` (mDNS), no password: anyone on the home Wi-Fi can use every
+  control. Mostly used from guests' phones (iPhone and Android), so it is built for small
+  touch screens, follows the system's light/dark setting, and has no build framework.
+- **Main view:** on/off, brightness (follows the finger live), the six modes, the colour
+  controls the current mode uses, and presets. Presets are named; only saved ones are listed,
+  with "Save current look as a preset" for the next free slot. Editing a preset renames,
+  replaces or deletes it (deleting asks first; Enter in the name box never deletes).
+- **Share:** a QR code of the board's IP address (`http://<ip>/`), because some Android phones
+  don't resolve `.local` names. A DHCP reservation on the router keeps that address fixed.
+- **Settings view:** status (version, Wi-Fi network and signal, address, audio, CPU load,
+  uptime), and maintenance actions, each confirmed first: Learn room noise, Forget Wi-Fi,
+  Reset settings (Wi-Fi is kept). Firmware updates join these in step 8.
+- **Staying in sync:** the page polls `/api/state` every 2 s, so changes from another phone
+  (or Apple/Google Home later) appear within a couple of seconds. While a finger is on a
+  control, polled values don't fight it. Live controls send at most 10 changes a second,
+  one request at a time, always ending on the final value; flash is written once afterwards
+  (5 s debounce).
+- **Built into the firmware:** `tools/embed_web.py` inlines the QR library, gzips the page
+  (about 20 KB) and writes `src/web/WebPage.h`; no file-upload step in the Arduino IDE.
+  The page is sent with an ETag, so phones re-download it only after a firmware update.
+- **API** (form-encoded POSTs; each answers with the full state, or `{"error": "..."}` and
+  HTTP 400; changes are all or nothing):
+
+  | Request | Fields |
+  |---|---|
+  | `GET /api/state` | everything the page shows, including a `revision` counter and `status` |
+  | `POST /api/state` | `on`, `mode`, `brightness` (0-255), `colourA`, `colourB` (`#RRGGBB`), `spectrumColour` (`rainbow`/`fixed`) |
+  | `POST /api/preset/save` | `slot` (1-8), `name` (optional; keeps the old name) |
+  | `POST /api/preset/recall`, `/delete` | `slot` |
+  | `POST /api/preset/rename` | `slot`, `name` (up to 24 bytes of UTF-8) |
+  | `POST /api/action/learn-noise`, `/forget-wifi`, `/reset-settings` | none |
+
+  The same API makes scripting or a Homebridge plugin possible later.
+- **Testing without the board:** `tools/mock_server.py` serves the built page and answers
+  the same API from memory; `test/web/page_test.js` drives it in Chromium at two phone sizes.
+  `WebApi` itself is unit-tested on the PC.
 
 ### Firmware updates
 
 - **From the Arduino IDE** over the network (network port), and **from the web page** by
   uploading a `.bin` exported by the IDE.
-- Needs a partition scheme with two app slots large enough for the Matter build *(to check)*.
+- Uses the "Matter 8MB with spiffs" scheme's two 3.25 MB app slots (checked in step 6).
 
 ### Matter
 

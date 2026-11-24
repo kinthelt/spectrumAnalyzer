@@ -31,7 +31,8 @@ BIN := $(BUILD)/run_tests
 all: $(BIN)
 	@mkdir -p $(BUILD)/json
 	./$(BIN)
-	@python3 -c 'import glob, json, sys; files = sorted(glob.glob("$(BUILD)/json/*.json")); [json.load(open(f, encoding="utf-8")) for f in files]; print(f"{len(files)} JSON samples parse as valid JSON")' 
+	@python3 -c 'import glob, json, sys; files = sorted(glob.glob("$(BUILD)/json/*.json")); [json.load(open(f, encoding="utf-8")) for f in files]; print(f"{len(files)} JSON samples parse as valid JSON")'
+	@python3 ../tools/embed_web.py --check
 
 $(BIN): $(FIRMWARE_SOURCES) $(TEST_SOURCES) $(wildcard *.h) $(wildcard $(SRC_DIR)/*/*.h)
 	@mkdir -p $(BUILD)

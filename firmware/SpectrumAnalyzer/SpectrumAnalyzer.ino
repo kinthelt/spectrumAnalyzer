@@ -6,13 +6,15 @@
 //   src/settings/  current settings, presets, saving to flash
 //   src/modes/     lighting and spectrum modes, and the manager that picks one
 //   src/leds/      LED output (FastLED)
-//   src/net/       Wi-Fi, setup network, spectrum.local, status page
+//   src/net/       Wi-Fi, setup network, spectrum.local
+//   src/web/       the web page and its API
 //   src/diag/      statistics, live audio view and the serial console
 //   src/util/      logging, colours, boot information
 //
 // See docs/DESIGN.md for the full design and build order.
 
 #include <Arduino.h>
+#include <WiFi.h>
 
 #include "src/audio/AudioInput.h"
 #include "src/config/Config.h"
@@ -21,11 +23,13 @@
 #include "src/leds/LedTask.h"
 #include "src/net/Connectivity.h"
 #include "src/net/PowerCycleCounter.h"
+#include "src/net/StationIp.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
 #include "src/util/Log.h"
 #include "src/util/Shared.h"
 #include "src/util/SystemInfo.h"
+#include "src/web/WebUi.h"
 
 // Who runs where:
 //   core 0  audio task (AudioInput)               mic, filter bank, levels
@@ -52,27 +56,47 @@ static void publishSettings() {
   publishedRevision = settings.revision();
 }
 
-// Text of the placeholder status page at http://spectrum.local (until step 7).
-static String describeStatus() {
-  const LightSettings& s = settings.current();
-  AudioFrame audioNow;
-  const bool haveAudio = audio.snapshot(&audioNow);
-  char colourA[7];
-  formatHexColour(s.colourA, colourA);
-  String text = "Spectrum Analyzer ";
-  text += config::kFirmwareVersion;
-  text += "\n\nStrip: ";
-  text += s.on ? "on" : "off";
-  text += "\nMode: ";
-  text += modeName(s.mode);
-  text += "\nBrightness: " + String(s.brightness) + " of 255";
-  text += "\nColour A: #" + String(colourA);
-  text += "\nAudio: ";
-  text += !haveAudio ? "none" : (audioNow.silent ? "silent" : "sound");
-  text += "\nWi-Fi: " + connectivity.summary();
-  text += "\nUp for " + String(millis() / 1000) + " s";
-  text += "\n\nThe full web page arrives in build step 7.\n";
-  return text;
+// Facts for the web page's status panel.
+static DeviceStatus deviceStatus();
+static WebUi webUi(settings, WebUi::Hooks{
+                                 deviceStatus,
+                                 [] { audio.requestNoiseLearning(); },
+                                 [] { connectivity.forgetWifi(); },
+                             });
+static bool audioStarted = false;
+
+static DeviceStatus deviceStatus() {
+  DeviceStatus st;
+  st.version = config::kFirmwareVersion;
+  st.hostname = config::kHostname;
+  st.uptimeSeconds = millis() / 1000;
+
+  uint32_t ip = 0;
+  if (connectivity.connected() && stationIp(&ip)) {
+    st.wifiConnected = true;
+    st.ssid = WiFi.SSID().c_str();
+    st.rssi = WiFi.RSSI();
+    st.ip = ipToString(ip).c_str();
+  }
+
+  // Audio is "ok" while new frames keep arriving (about 94 a second).
+  static uint32_t lastSequence = 0;
+  static uint32_t lastChangeMillis = 0;
+  AudioFrame frame;
+  if (audioStarted && audio.snapshot(&frame)) {
+    if (frame.sequence != lastSequence) {
+      lastSequence = frame.sequence;
+      lastChangeMillis = millis();
+    }
+    st.audioOk = millis() - lastChangeMillis < 1000;
+    st.silent = frame.silent;
+    st.learningNoise = frame.learningNoise;
+    // Share of core 0 used by the analysis: time per block / time between blocks.
+    const uint32_t blockMicros =
+        static_cast<uint32_t>(1000000ULL * config::kAudioBlockSize / config::kSampleRate);
+    st.audioLoadPercent = static_cast<int32_t>((frame.dspMicros * 100 + blockMicros / 2) / blockMicros);
+  }
+  return st;
 }
 
 void setup() {
@@ -83,11 +107,11 @@ void setup() {
   store.begin();
   settings.begin();
   publishSettings();
-  audio.begin();
+  audioStarted = audio.begin();
   ledTask.start();
 
   const bool forceSetup = powerCycles.begin();
-  connectivity.setStatusDescriber(describeStatus);
+  connectivity.setWebService(&webUi);
   connectivity.begin(forceSetup);
 
   console.printStatus();
