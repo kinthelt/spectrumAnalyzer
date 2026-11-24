@@ -176,8 +176,8 @@ All modes take the global brightness and respect the current limit.
 
 | Mode | Behaviour |
 |---|---|
-| **Spectrum Snappy** | Fast attack, fast fall. **Peak flash:** a band reaching a new peak flashes toward white, then fades back to the strip colour. |
-| **Spectrum Smooth** | Softer attack, slow fall. **Peak hold:** each LED holds its peak briefly before falling. |
+| **Spectrum Snappy** | Instant rise, fast fall (full to dark in ~0.33 s). **Peak flash:** a jump of 0.25+ in one frame to 0.5+ flashes toward white, fading back over 0.25 s. |
+| **Spectrum Smooth** | Softened rise (60 ms), **peak hold** 0.4 s, then a slow fall (full to dark in ~1.25 s). |
 | **Solid colour** | Every LED one chosen colour. |
 | **Gradient** | Blend from colour A at the left to colour B at the right. |
 | **Rainbow** | The whole strip in one colour, slowly cycling through the rainbow. |
@@ -185,7 +185,9 @@ All modes take the global brightness and respect the current limit.
 
 Spectrum colour: either **rainbow cycle** (default: the whole strip is one hue that cycles
 slowly through the rainbow, one full cycle per minute) or **fixed colour** (colour A).
-Each LED's brightness is its band level.
+Each LED's brightness is its band level raised to the power 2.2, so equal steps on the
+dB scale look equally bright. In silence, spectrum modes fade to dark over 2 s; if audio
+frames stop arriving (audio failure), they go dark too.
 
 Attack, fall, hold and flash times are tuning constants in `src/config/`, set on the hardware.
 

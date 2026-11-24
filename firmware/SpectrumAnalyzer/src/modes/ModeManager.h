@@ -6,12 +6,14 @@
 #include "LightMode.h"
 #include "RainbowMode.h"
 #include "SolidMode.h"
-#include "SpectrumPlaceholderMode.h"
+#include "SpectrumMode.h"
 #include "TwinkleMode.h"
 
 class ModeManager {
  public:
-  void render(const LightSettings& settings, uint32_t nowMillis, Rgb* out, int count);
+  // audio: the latest analysis, or nullptr if none has arrived recently.
+  void render(const LightSettings& settings, const AudioFrame* audio, uint32_t nowMillis,
+              Rgb* out, int count);
 
   // The mode rendered last frame (useful for logging).
   Mode activeMode() const { return active_; }
@@ -23,7 +25,8 @@ class ModeManager {
   GradientMode gradient_;
   RainbowMode rainbow_;
   TwinkleMode twinkle_;
-  SpectrumPlaceholderMode spectrumPlaceholder_;   // replaced in step 5
+  SpectrumMode spectrumSnappy_{SpectrumMode::Style::Snappy};
+  SpectrumMode spectrumSmooth_{SpectrumMode::Style::Smooth};
 
   Mode active_ = Mode::Solid;
   bool started_ = false;

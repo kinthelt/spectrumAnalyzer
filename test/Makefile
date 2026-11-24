@@ -13,7 +13,7 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/util/Rgb.cpp \
 	$(SRC_DIR)/modes/ModeManager.cpp \
 	$(SRC_DIR)/modes/TwinkleMode.cpp \
-	$(SRC_DIR)/modes/SpectrumPlaceholderMode.cpp \
+	$(SRC_DIR)/modes/SpectrumMode.cpp \
 	$(SRC_DIR)/audio/FilterBank.cpp \
 	$(SRC_DIR)/audio/LevelTracker.cpp
 

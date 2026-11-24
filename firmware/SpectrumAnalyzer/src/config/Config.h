@@ -66,6 +66,23 @@ constexpr int kSilenceMaxActiveBands = 2;
 constexpr float kSilenceSeconds = 1.5f;
 constexpr float kSilenceExitDb = 10.0f;
 
+// ---- Spectrum modes ----------------------------------------------------------
+// Levels are 0..1 on a dB scale; brightness = level ^ gamma so steps look even.
+constexpr float kSpectrumGamma = 2.2f;
+// Snappy: instant rise, fast fall, and a white flash on a sudden new peak.
+constexpr float kSnappyFallPerSecond = 3.0f;    // full to dark in ~0.33 s
+constexpr float kFlashJump = 0.25f;             // a jump this big in one frame...
+constexpr float kFlashMinLevel = 0.5f;          // ...to at least this level flashes
+constexpr float kFlashSeconds = 0.25f;          // flash fades back to colour over this
+// Smooth: softened rise, then each LED holds its peak before falling slowly.
+constexpr float kSmoothAttackSeconds = 0.06f;
+constexpr float kSmoothHoldSeconds = 0.4f;
+constexpr float kSmoothFallPerSecond = 0.8f;    // full to dark in ~1.25 s
+// Silence: spectrum modes fade to dark over this; sound brings them back at once.
+constexpr float kSilenceFadeSeconds = 2.0f;
+// No audio frame for this long (audio failed) counts as silence.
+constexpr uint32_t kAudioStaleMillis = 500;
+
 // ---- Audio task --------------------------------------------------------------
 constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1
 constexpr int kAudioTaskPriority = 5;

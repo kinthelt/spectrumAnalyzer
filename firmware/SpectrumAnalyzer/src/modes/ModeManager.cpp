@@ -6,14 +6,14 @@ LightMode& ModeManager::modeFor(Mode mode) {
     case Mode::Gradient: return gradient_;
     case Mode::Rainbow: return rainbow_;
     case Mode::Twinkle: return twinkle_;
-    case Mode::SpectrumSnappy:
+    case Mode::SpectrumSnappy: return spectrumSnappy_;
     case Mode::SpectrumSmooth:
-    default: return spectrumPlaceholder_;
+    default: return spectrumSmooth_;
   }
 }
 
-void ModeManager::render(const LightSettings& settings, uint32_t nowMillis, Rgb* out,
-                         int count) {
+void ModeManager::render(const LightSettings& settings, const AudioFrame* audio,
+                         uint32_t nowMillis, Rgb* out, int count) {
   LightMode& mode = modeFor(settings.mode);
   if (!started_ || settings.mode != active_) {
     mode.reset(nowMillis);
@@ -25,5 +25,5 @@ void ModeManager::render(const LightSettings& settings, uint32_t nowMillis, Rgb*
     for (int i = 0; i < count; ++i) out[i] = Rgb{};
     return;
   }
-  mode.render(RenderContext{nowMillis, settings}, out, count);
+  mode.render(RenderContext{nowMillis, settings, audio}, out, count);
 }

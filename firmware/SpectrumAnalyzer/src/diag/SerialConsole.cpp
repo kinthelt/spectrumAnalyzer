@@ -34,7 +34,7 @@ void SerialConsole::printHelp() {
       "  on | off               turn the strip on or off\n"
       "  bright <0-255>         set brightness\n"
       "  mode <name>            solid, gradient, rainbow, twinkle,\n"
-      "                         spectrum-snappy, spectrum-smooth (placeholder until step 5)\n"
+      "                         spectrum-snappy, spectrum-smooth\n"
       "  colour a|b <RRGGBB>    set colour A or B, e.g. colour a FF8000\n"
       "  spectrum rainbow|fixed spectrum colouring\n"
       "  save <1-8>             save current settings as a preset\n"

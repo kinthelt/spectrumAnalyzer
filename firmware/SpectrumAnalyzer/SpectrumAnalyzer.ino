@@ -35,6 +35,8 @@ static LedOutput leds;
 static FrameStats frameStats(config::kStatsIntervalMillis);
 
 static AudioFrame audioFrame;
+static uint32_t lastAudioMillis = 0;
+static bool haveAudio = false;
 static Rgb frame[config::kNumLeds];
 static uint32_t lastFrameMicros = 0;
 static uint32_t appliedRevision = 0;
@@ -60,6 +62,8 @@ void loop() {
 
   // Audio frames arrive ~94 times a second from core 0; take the newest.
   if (audio.latest(&audioFrame)) {
+    haveAudio = true;
+    lastAudioMillis = millis();
     frameStats.recordAudio(audioFrame.dspMicros);
     audioMonitor.onFrame(audioFrame, millis());
   }
@@ -75,7 +79,9 @@ void loop() {
   }
 
   const uint32_t nowMillis = millis();
-  modes.render(s, nowMillis, frame, config::kNumLeds);
+  // Audio that has stopped arriving counts as none (the spectrum modes go dark).
+  const bool audioFresh = haveAudio && nowMillis - lastAudioMillis < config::kAudioStaleMillis;
+  modes.render(s, audioFresh ? &audioFrame : nullptr, nowMillis, frame, config::kNumLeds);
   leds.write(frame, config::kNumLeds);
   leds.show();
 

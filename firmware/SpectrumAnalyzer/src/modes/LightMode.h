@@ -1,16 +1,18 @@
 // Interface every mode implements. A mode turns the settings (and, for the
-// spectrum modes in step 5, the audio levels) into one frame of colours.
+// spectrum modes, the latest audio analysis) into one frame of colours.
 // Plain C++ so modes are unit-tested on a PC.
 #pragma once
 
 #include <cstdint>
 
+#include "../audio/AudioFrame.h"
 #include "../settings/LightSettings.h"
 #include "../util/Rgb.h"
 
 struct RenderContext {
   uint32_t nowMillis;
   const LightSettings& settings;
+  const AudioFrame* audio;   // latest analysis; nullptr if none has arrived recently
 };
 
 class LightMode {
