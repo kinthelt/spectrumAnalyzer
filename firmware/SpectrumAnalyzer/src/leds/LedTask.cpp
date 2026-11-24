@@ -56,7 +56,15 @@ void LedTask::drawFrame(uint32_t nowMillis) {
                                              frame_, config::kNumLeds);
   if (showUpdate != showingUpdate_) {
     showingUpdate_ = showUpdate;
-    leds_.setBrightness(showUpdate ? config::kUpdateBarBrightness : current_.brightness);
+    leds_.setBrightness(showUpdate ? config::kUpdateBrightness : current_.brightness);
+  }
+  // While the file is written to flash, send the steady colour a few times and
+  // then leave the strip alone: frames sent during flash writes get garbled.
+  if (showUpdate && update_bar::holdsStill(updateProgress_)) {
+    if (heldFrames_ >= update_bar::kHoldFrames) return;
+    ++heldFrames_;
+  } else {
+    heldFrames_ = 0;
   }
   leds_.write(frame_, config::kNumLeds);
   leds_.show();

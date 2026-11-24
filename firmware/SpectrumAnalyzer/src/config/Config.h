@@ -107,7 +107,7 @@ constexpr uint32_t kUpdateGiveUpMillis = 5u * 60 * 1000;
 constexpr uint32_t kUpdateStallMillis = 15u * 1000;       // upload gives up if no data this long
 constexpr uint32_t kUpdateRestartDelayMillis = 1500;      // green flash, and the reply reaches the phone
 constexpr uint32_t kUpdateFailFlashMillis = 2000;         // red flash, then back to normal
-constexpr uint8_t kUpdateBarBrightness = 80;              // progress bar shows even if the lights were off
+constexpr uint8_t kUpdateBrightness = 80;                 // update colours show even if the lights were off
 // Bench test of the rollback only: set true, upload this build over Wi-Fi, and it
 // never declares itself good, so after kUpdateGiveUpMillis the previous firmware
 // returns. Always false otherwise.

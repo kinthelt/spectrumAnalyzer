@@ -15,22 +15,9 @@ bool render(const UpdateProgress& progress, uint32_t nowMillis, uint32_t failFla
   switch (progress.phase) {
     case UpdateProgress::Phase::Idle:
       return false;
-    case UpdateProgress::Phase::Receiving: {
-      // Lit length in 1/100ths of an LED, so the bar's tip brightens smoothly.
-      const uint32_t pct = progress.percent > 100 ? 100 : progress.percent;
-      const uint32_t litHundredths = pct * static_cast<uint32_t>(count);
-      const int full = static_cast<int>(litHundredths / 100);
-      for (int i = 0; i < count; ++i) {
-        if (i < full) {
-          out[i] = kBar;
-        } else if (i == full) {
-          out[i] = lerp(kTrack, kBar, (litHundredths % 100) / 100.0f);
-        } else {
-          out[i] = kTrack;
-        }
-      }
+    case UpdateProgress::Phase::Receiving:
+      fill(out, count, kReceiving);
       return true;
-    }
     case UpdateProgress::Phase::Succeeded:
       fill(out, count, flashOn(elapsed) ? kGood : Rgb{});
       return true;

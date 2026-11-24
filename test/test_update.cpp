@@ -1,6 +1,6 @@
 // Unit tests for firmware updates: the marker scanner, the upload rules
-// (UpdateSession), the trial-firmware decision (BootValidator) and the strip's
-// progress display (UpdateBar).
+// (UpdateSession), the trial-firmware decision (BootValidator) and what the
+// strip shows during an update (UpdateBar).
 
 #include <cstring>
 #include <string>
@@ -298,26 +298,20 @@ TEST(boot_flaky_wifi_rolls_back) {
 
 // ---- Strip display ---------------------------------------------------------------------------
 
-TEST(update_bar_fills_left_to_right) {
+TEST(update_strip_holds_one_steady_colour_while_receiving) {
   Rgb out[150];
   UpdateProgress p;
   CHECK(!update_bar::render(p, 0, 2000, out, 150));   // idle: the mode draws as usual
+  CHECK(!update_bar::holdsStill(p));
   p.phase = UpdateProgress::Phase::Receiving;
-  p.percent = 0;
-  CHECK(update_bar::render(p, 0, 2000, out, 150));
-  CHECK(out[0] == update_bar::kTrack && out[149] == update_bar::kTrack);
-  p.percent = 50;
-  update_bar::render(p, 0, 2000, out, 150);
-  CHECK(out[0] == update_bar::kBar && out[74] == update_bar::kBar);
-  CHECK(out[75] == update_bar::kTrack && out[149] == update_bar::kTrack);
-  p.percent = 33;   // 49.5 LEDs: the 50th is half-way between track and bar
-  update_bar::render(p, 0, 2000, out, 150);
-  CHECK(out[48] == update_bar::kBar);
-  CHECK(out[49] != update_bar::kBar && out[49] != update_bar::kTrack);
-  CHECK(out[50] == update_bar::kTrack);
-  p.percent = 100;
-  update_bar::render(p, 0, 2000, out, 150);
-  CHECK(out[149] == update_bar::kBar);
+  p.phaseSinceMillis = 100;
+  for (uint32_t t : {100u, 5000u, 60000u}) {           // the same picture the whole time
+    CHECK(update_bar::render(p, t, 2000, out, 150));
+    CHECK(out[0] == update_bar::kReceiving && out[149] == update_bar::kReceiving);
+  }
+  CHECK(update_bar::holdsStill(p));                    // the LED task stops sending after a few frames
+  p.phase = UpdateProgress::Phase::Succeeded;
+  CHECK(!update_bar::holdsStill(p));                   // the flashes are sent normally
 }
 
 TEST(update_bar_success_and_failure_flashes) {

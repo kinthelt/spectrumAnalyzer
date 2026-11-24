@@ -60,6 +60,9 @@ class FirmwareUpdate {
 
  private:
   void publish(uint32_t nowMillis);
+  // One log line about how the upload went, to tell a Wi-Fi stall (a long gap,
+  // the last piece ~5 s ago) from a dropped connection (last piece just now).
+  void logTransfer(const char* outcome, uint32_t nowMillis);
 
   UpdateWriter writer_;
   UpdateSession session_;
@@ -68,4 +71,8 @@ class FirmwareUpdate {
   UpdateProgress published_;
   std::function<void()> beforeRestart_;
   bool lastUndone_ = false;
+  // Timing of the current upload, for logTransfer().
+  uint32_t uploadStartMillis_ = 0;
+  uint32_t lastPieceMillis_ = 0;
+  uint32_t longestGapMillis_ = 0;
 };

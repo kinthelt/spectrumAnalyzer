@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Update.h>
+#include <WiFi.h>
 #include <esp_ota_ops.h>
 
 #include "../config/Config.h"
@@ -80,6 +81,8 @@ void FirmwareUpdate::begin(uint32_t nowMillis) {
 std::string FirmwareUpdate::uploadStart(size_t contentLength, uint32_t nowMillis) {
   const std::string err = session_.start(contentLength, nowMillis);
   if (err.empty()) {
+    uploadStartMillis_ = lastPieceMillis_ = nowMillis;
+    longestGapMillis_ = 0;
     LOG_INFO("update", "receiving firmware (about %u bytes)", (unsigned)contentLength);
   } else {
     LOG_WARN("update", "refused: %s", err.c_str());
@@ -90,9 +93,15 @@ std::string FirmwareUpdate::uploadStart(size_t contentLength, uint32_t nowMillis
 
 void FirmwareUpdate::uploadData(const uint8_t* data, size_t len, uint32_t nowMillis) {
   const bool wasReceiving = session_.phase() == UpdateSession::Phase::Receiving;
+  if (wasReceiving) {
+    const uint32_t gap = nowMillis - lastPieceMillis_;
+    if (gap > longestGapMillis_) longestGapMillis_ = gap;
+    lastPieceMillis_ = nowMillis;
+  }
   session_.write(data, len, nowMillis);
   if (wasReceiving && session_.phase() == UpdateSession::Phase::Failed) {
     LOG_WARN("update", "failed: %s", session_.error().c_str());
+    logTransfer("stopped", nowMillis);
   }
   publish(nowMillis);
 }
@@ -101,8 +110,10 @@ void FirmwareUpdate::uploadEnd(uint32_t nowMillis) {
   if (session_.phase() != UpdateSession::Phase::Receiving) return;
   session_.finish(nowMillis);
   if (succeeded()) {
+    logTransfer("received", nowMillis);
     LOG_INFO("update", "installed %u bytes; restarting into the new firmware", (unsigned)session_.received());
   } else {
+    logTransfer("received", nowMillis);
     LOG_WARN("update", "failed: %s", session_.error().c_str());
   }
   publish(nowMillis);
@@ -112,6 +123,7 @@ void FirmwareUpdate::uploadAborted(uint32_t nowMillis) {
   if (session_.phase() != UpdateSession::Phase::Receiving) return;
   session_.cancel("The upload was interrupted. The lights keep their current version.", nowMillis);
   LOG_WARN("update", "upload interrupted after %u bytes", (unsigned)session_.received());
+  logTransfer("interrupted", nowMillis);
   publish(nowMillis);
 }
 
@@ -149,12 +161,20 @@ void FirmwareUpdate::publish(uint32_t nowMillis) {
   (void)nowMillis;
   UpdateProgress p;
   p.phase = toProgressPhase(session_.phase());
-  p.percent = session_.percent();
   p.phaseSinceMillis = session_.phaseSinceMillis();
-  if (p.phase == published_.phase && p.percent == published_.percent &&
-      p.phaseSinceMillis == published_.phaseSinceMillis) {
+  if (p.phase == published_.phase && p.phaseSinceMillis == published_.phaseSinceMillis) {
     return;   // unchanged: don't take the lock every loop
   }
   published_ = p;
   progress_.set(p);
+}
+
+void FirmwareUpdate::logTransfer(const char* outcome, uint32_t nowMillis) {
+  const uint32_t ms = nowMillis - uploadStartMillis_;
+  const unsigned kb = static_cast<unsigned>(session_.received() / 1024);
+  LOG_INFO("update",
+           "transfer %s: %u KB in %.1f s (%.0f KB/s), longest gap between pieces %lu ms, "
+           "last piece %lu ms ago, Wi-Fi %d dBm, free heap %lu",
+           outcome, kb, ms / 1000.0f, ms > 0 ? kb * 1000.0f / ms : 0.0f, (unsigned long)longestGapMillis_,
+           (unsigned long)(nowMillis - lastPieceMillis_), (int)WiFi.RSSI(), (unsigned long)ESP.getFreeHeap());
 }

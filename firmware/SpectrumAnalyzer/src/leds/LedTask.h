@@ -5,7 +5,8 @@
 // frame statistics. It reads settings only through a shared snapshot that the
 // Arduino loop publishes, so network work in the loop (web page, Wi-Fi setup)
 // can never delay a frame, and the two never touch the same data unguarded.
-// During a firmware update it shows the progress bar instead of the mode.
+// During a firmware update it shows the update colours instead of the mode
+// (see modes/UpdateBar.h).
 #pragma once
 
 #include "../audio/AudioInput.h"
@@ -45,6 +46,7 @@ class LedTask {
   UpdateProgress updateProgress_;
   unsigned updateVersion_ = 0;
   bool showingUpdate_ = false;
+  int heldFrames_ = 0;   // frames sent since the strip started holding the update colour
   AudioFrame audioFrame_;
   bool haveAudio_ = false;
   uint32_t lastAudioMillis_ = 0;

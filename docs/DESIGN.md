@@ -304,8 +304,12 @@ Spike findings that shaped the code:
   - the Update library's own checks at the end: complete, checksums, built for an ESP32-S3.
   Only after all of them does the bootloader switch to the new slot. The page also catches
   the usual wrong picks by file name before sending.
-- **Strip:** a blue bar fills left to right while the file arrives (brightness fixed so it
-  shows even if the lights were off), green flashes when installed, then the board restarts
+- **Strip:** one steady dim blue while the file arrives (brightness fixed so it shows even
+  if the lights were off); progress is shown on the phone. A live progress bar was tried
+  and dropped: writing to flash pauses both cores thousands of times, and strip data sent
+  during a pause gets garbled (it flickered). So the LED task sends the blue a few times,
+  then stops sending until the upload ends; WS2812s hold their last colour. Green flashes
+  when installed, then the board restarts
   into the saved mode and settings (saved first). Red flashes if refused; the old firmware
   carries on.
 - **Going back automatically** (`BootValidator`, unit-tested): the esp32 3.3.x board package
@@ -346,7 +350,7 @@ Each step ends with something testable on the bench.
 5. **Spectrum modes:** Snappy and Smooth, silence fade; tuning on the hardware.
 6. **Wi-Fi:** setup portal, mDNS, power-cycle reset.
 7. **Web page and API.**
-8. **Wi-Fi updates:** upload checks, progress bar, automatic rollback.
+8. **Wi-Fi updates:** upload checks, update colours on the strip, automatic rollback.
 9. **Matter.**
 10. **Install:** Perma-Proto board, ceiling wiring, current limit raised to the final value.
 

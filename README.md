@@ -51,8 +51,8 @@ Two ways, both through the same checks on the board:
   files in the sketch's `build/` folder; the `.merged.bin`, bootloader and partition files are
   refused with a message saying which file to choose.)
 
-The strip shows a blue progress bar, flashes green and restarts (red flashes if the update was
-refused; the old firmware stays). New firmware is kept once it has been on Wi-Fi with the web
+The strip turns a steady dim blue while the file arrives (the phone shows the progress), then
+flashes green and restarts (red flashes if the update was refused; the old firmware stays). New firmware is kept once it has been on Wi-Fi with the web
 page running for 30 s in a row; if that doesn't happen within 5 minutes, or it crashes first,
 the previous firmware comes back by itself. USB uploads are unaffected.
 

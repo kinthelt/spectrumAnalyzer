@@ -196,8 +196,8 @@ footer.row { margin-top: 2px; }
     <div class="action">
       <p id="fw-note" hidden></p>
       <p>In the Arduino IDE, choose <b>Sketch › Export Compiled Binary</b>, then pick
-         <b>SpectrumAnalyzer.ino.esp32s3.bin</b> from the sketch folder. The strip shows a progress
-         bar and the lights restart; it takes about a minute.</p>
+         <b>SpectrumAnalyzer.ino.esp32s3.bin</b> from the sketch folder. The strip turns dim blue while the
+         file arrives, flashes green, and the lights restart; it takes about a minute.</p>
       <label class="btn file-btn" id="fw-choose">Choose firmware file…<input type="file" id="fw-file"></label>
       <div class="fw-progress" id="fw-progress" hidden>
         <progress id="fw-bar" max="100" value="0"></progress>
@@ -567,7 +567,7 @@ $("fw-file").onchange = () => {
   if (problem) { fwProgress(null); fwMessage(problem, true); return; }
   fwMessage("");
   confirmThen("Install this update?",
-    `${file.name} (${mb(file.size)}). The strip shows a progress bar, then the lights restart. ` +
+    `${file.name} (${mb(file.size)}). The strip turns dim blue, flashes green, then the lights restart. ` +
     "Keep this page open: it takes about a minute.",
     "Install", () => uploadFirmware(file));
 };
