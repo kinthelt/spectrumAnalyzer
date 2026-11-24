@@ -96,5 +96,6 @@ void AudioInput::run() {
     frame_.dspMicros = micros() - start;
     ++frame_.sequence;
     xQueueOverwrite(queue_, &frame_);
+    snapshot_.set(frame_);
   }
 }

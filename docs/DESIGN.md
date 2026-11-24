@@ -85,13 +85,18 @@ Core 0                          Core 1                                    Networ
                                       └───────────────────────────────────────────────┘
 ```
 
-- **Audio (core 0):** reads the mic, runs the filter bank, and publishes 150 band levels about
-  every 10 ms. It never touches LEDs or the network.
-- **LEDs (core 1):** the active mode turns the latest levels (or the time, for lighting modes)
-  into 150 colours, then FastLED sends them to the strip.
-- **Settings:** one shared object holding the current mode, colours, brightness and presets.
-  The web page and Matter change it; modes read it. Changes are saved to flash after a few
-  quiet seconds.
+| Where | Task | Priority | Does |
+|---|---|---|---|
+| Core 0 | Audio task | 5 | Mic, filter bank, levels; publishes each frame to a one-slot queue (LED task) and a shared snapshot (everyone else). ~43% of the core. |
+| Core 1 | LED task | 3 | Every 10 ms on a fixed beat: newest audio frame, settings snapshot, active mode, FastLED, frame stats. |
+| Core 1 | Arduino `loop()` | 1 | Settings (the only writer), serial console, Wi-Fi, web page. Publishes a settings copy when they change. |
+
+- The LED task outranks `loop()`, so web requests or the Wi-Fi setup page never delay a
+  frame. When frames were drawn from `loop()`, network work stretched them to 93.7 fps.
+- Data crossing between tasks goes only through `Shared<T>` (a value copied in and out
+  under a lock) or the audio queue. No task reads another's live objects.
+- **Settings:** changed only from `loop()` (console now, web page in step 7, Matter in
+  step 9 via `loop()` too), saved to flash a few quiet seconds after the last change.
 
 ### Source layout
 

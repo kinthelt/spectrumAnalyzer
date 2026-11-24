@@ -244,3 +244,41 @@ TEST(factory_reset_clears_everything) {
   CHECK(!m.presetUsed(0));
   CHECK(store.data.empty());
 }
+
+// ---- Shared<T>: values passed between tasks ----------------------------------------
+
+#include <atomic>
+#include <thread>
+
+#include "util/Shared.h"
+
+TEST(shared_value_never_tears_between_threads) {
+  // A writer keeps setting settings whose every field holds the same number; a
+  // reader checks each copy it gets is internally consistent (all one write).
+  Shared<LightSettings> shared;
+  std::atomic<bool> stop{false};
+  std::thread writer([&] {
+    for (uint8_t n = 0; !stop.load(); ++n) {
+      LightSettings s;
+      s.brightness = n;
+      s.colourA = Rgb{n, n, n};
+      s.colourB = Rgb{n, n, n};
+      shared.set(s);
+    }
+  });
+  int torn = 0;
+  unsigned lastVersion = 0;
+  bool versionsIncrease = true;
+  for (int i = 0; i < 200000; ++i) {
+    LightSettings s;
+    const unsigned v = shared.get(&s);
+    if (v != 0 && (s.colourA.r != s.brightness || s.colourB.b != s.brightness)) ++torn;
+    if (v < lastVersion) versionsIncrease = false;
+    lastVersion = v;
+  }
+  stop.store(true);
+  writer.join();
+  CHECK_EQ(torn, 0);
+  CHECK(versionsIncrease);
+  CHECK(shared.version() > 0);
+}

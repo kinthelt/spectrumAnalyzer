@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.6.0";
+constexpr const char* kFirmwareVersion = "0.6.1";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
@@ -96,6 +96,12 @@ constexpr uint32_t kSetupPortalMillis = 10u * 60u * 1000u;
 // of switching on, opens the setup network (the board is above the ceiling).
 constexpr int kPowerCyclesForSetup = 3;
 constexpr uint32_t kPowerCycleWindowMillis = 5000;
+
+// ---- LED task -----------------------------------------------------------------
+// Core 1, above the Arduino loop (priority 1), so network work never delays frames.
+constexpr int kLedTaskCore = 1;
+constexpr int kLedTaskPriority = 3;
+constexpr uint32_t kLedTaskStackBytes = 8192;
 
 // ---- Audio task --------------------------------------------------------------
 constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1

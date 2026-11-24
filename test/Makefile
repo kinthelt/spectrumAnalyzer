@@ -4,7 +4,7 @@
 
 SRC_DIR := ../firmware/SpectrumAnalyzer/src
 CXX ?= g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -O1 -g -I$(SRC_DIR) -I.
+CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -O1 -g -pthread -I$(SRC_DIR) -I.
 
 FIRMWARE_SOURCES := \
 	$(SRC_DIR)/settings/LightSettings.cpp \

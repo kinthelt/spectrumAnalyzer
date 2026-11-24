@@ -1,8 +1,10 @@
 // Microphone input and analysis, running in its own task on core 0.
 //
 // The task reads 512-sample blocks from the ICS-43434 over I2S, runs the filter
-// bank and level tracker, and publishes an AudioFrame through a one-slot queue
-// (newest frame wins). The LED code on core 1 picks frames up with latest().
+// bank and level tracker, and publishes each AudioFrame two ways:
+//   - a one-slot queue (newest wins) that the LED task consumes with latest();
+//   - a shared snapshot that anything else (live view, status page) can read
+//     with snapshot() without taking frames away from the LEDs.
 #pragma once
 
 #include <atomic>
@@ -12,6 +14,7 @@
 #include <freertos/queue.h>
 
 #include "../config/Config.h"
+#include "../util/Shared.h"
 #include "AudioFrame.h"
 #include "FilterBank.h"
 #include "LevelTracker.h"
@@ -22,9 +25,13 @@ class AudioInput {
   // (the rest of the firmware keeps running without audio).
   bool begin();
 
-  // Copies the newest frame into out if one has arrived since the last call.
-  // Never blocks.
+  // For the LED task only: copies the newest frame into out if one has arrived
+  // since the last call. Never blocks.
   bool latest(AudioFrame* out);
+
+  // For everyone else: copies the most recent frame (frame.sequence tells
+  // whether it's new). Returns false before the first frame.
+  bool snapshot(AudioFrame* out) const { return snapshot_.get(out) != 0; }
 
   const FilterBank& filterBank() const { return bank_; }
 
@@ -46,6 +53,7 @@ class AudioInput {
   FilterBank bank_;
   LevelTracker tracker_;
   AudioFrame frame_;   // owned by the audio task while building
+  Shared<AudioFrame> snapshot_;
 
   int32_t raw_[config::kAudioBlockSize];
   float samples_[config::kAudioBlockSize];

@@ -17,38 +17,46 @@
 #include "src/audio/AudioInput.h"
 #include "src/config/Config.h"
 #include "src/diag/AudioMonitor.h"
-#include "src/diag/FrameStats.h"
 #include "src/diag/SerialConsole.h"
-#include "src/leds/LedOutput.h"
-#include "src/modes/ModeManager.h"
+#include "src/leds/LedTask.h"
 #include "src/net/Connectivity.h"
 #include "src/net/PowerCycleCounter.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
 #include "src/util/Log.h"
+#include "src/util/Shared.h"
 #include "src/util/SystemInfo.h"
+
+// Who runs where:
+//   core 0  audio task (AudioInput)               mic, filter bank, levels
+//   core 1  LED task (LedTask), priority 3        modes, FastLED, every 10 ms
+//   core 1  Arduino loop(), priority 1            settings, console, Wi-Fi, web
+// The loop is the only writer of settings; it publishes a copy for the LED task.
 
 static NvsSettingsStore store;
 static SettingsManager settings(store);
+static Shared<LightSettings> sharedSettings;
+static uint32_t publishedRevision = 0;
 static AudioInput audio;
+static LedTask ledTask(audio, sharedSettings);
 static AudioMonitor audioMonitor;
 static Connectivity connectivity;
 static PowerCycleCounter powerCycles(store);
 static SerialConsole console(settings, audio, audioMonitor, connectivity);
-static ModeManager modes;
-static LedOutput leds;
-static FrameStats frameStats(config::kStatsIntervalMillis);
+static uint32_t monitoredSequence = 0;
 
-static AudioFrame audioFrame;
-static uint32_t lastAudioMillis = 0;
-static bool haveAudio = false;
-static Rgb frame[config::kNumLeds];
-static uint32_t lastFrameMicros = 0;
-static uint32_t appliedRevision = 0;
+// Gives the LED task a copy of the settings whenever they change.
+static void publishSettings() {
+  if (settings.revision() == publishedRevision) return;
+  sharedSettings.set(settings.current());
+  publishedRevision = settings.revision();
+}
 
 // Text of the placeholder status page at http://spectrum.local (until step 7).
 static String describeStatus() {
   const LightSettings& s = settings.current();
+  AudioFrame audioNow;
+  const bool haveAudio = audio.snapshot(&audioNow);
   char colourA[7];
   formatHexColour(s.colourA, colourA);
   String text = "Spectrum Analyzer ";
@@ -60,7 +68,7 @@ static String describeStatus() {
   text += "\nBrightness: " + String(s.brightness) + " of 255";
   text += "\nColour A: #" + String(colourA);
   text += "\nAudio: ";
-  text += audioFrame.silent ? "silent" : "sound";
+  text += !haveAudio ? "none" : (audioNow.silent ? "silent" : "sound");
   text += "\nWi-Fi: " + connectivity.summary();
   text += "\nUp for " + String(millis() / 1000) + " s";
   text += "\n\nThe full web page arrives in build step 7.\n";
@@ -74,9 +82,9 @@ void setup() {
   logBootInfo();
   store.begin();
   settings.begin();
-  leds.begin();
+  publishSettings();
   audio.begin();
-  frameStats.begin(millis());
+  ledTask.start();
 
   const bool forceSetup = powerCycles.begin();
   connectivity.setStatusDescriber(describeStatus);
@@ -89,34 +97,17 @@ void setup() {
 void loop() {
   console.poll();
   settings.tick(millis());
+  publishSettings();
   connectivity.loop(millis());
   powerCycles.tick(millis());
 
-  // Audio frames arrive ~94 times a second from core 0; take the newest.
-  if (audio.latest(&audioFrame)) {
-    haveAudio = true;
-    lastAudioMillis = millis();
-    frameStats.recordAudio(audioFrame.dspMicros);
-    audioMonitor.onFrame(audioFrame, millis());
+  // Live audio view: read the snapshot (the LED task consumes the queue).
+  AudioFrame audioNow;
+  if (audioMonitor.enabled() && audio.snapshot(&audioNow) &&
+      audioNow.sequence != monitoredSequence) {
+    monitoredSequence = audioNow.sequence;
+    audioMonitor.onFrame(audioNow, millis());
   }
 
-  const uint32_t nowMicros = micros();
-  if (nowMicros - lastFrameMicros < config::kFrameIntervalMicros) return;
-  lastFrameMicros = nowMicros;
-
-  const LightSettings& s = settings.current();
-  if (settings.revision() != appliedRevision) {
-    leds.setBrightness(s.brightness);
-    appliedRevision = settings.revision();
-  }
-
-  const uint32_t nowMillis = millis();
-  // Audio that has stopped arriving counts as none (the spectrum modes go dark).
-  const bool audioFresh = haveAudio && nowMillis - lastAudioMillis < config::kAudioStaleMillis;
-  modes.render(s, audioFresh ? &audioFrame : nullptr, nowMillis, frame, config::kNumLeds);
-  leds.write(frame, config::kNumLeds);
-  leds.show();
-
-  frameStats.recordFrame(leds.lastShowMicros());
-  frameStats.logIfDue(nowMillis);
+  delay(1);   // let lower-priority tasks run; nothing here needs sub-millisecond timing
 }
