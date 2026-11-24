@@ -24,6 +24,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_netif.h>
+#include <mdns.h>
 #include <esp_system.h>
 
 #include <atomic>
@@ -94,6 +95,21 @@ static void startNetServices() {
   } else {
     Serial.println("mDNS: FAILED to start (Matter may already own mDNS)");
   }
+
+  // Second name as a *delegated* host: answered by the same responder without
+  // being the main hostname, so it survives if Matter renames the main one.
+  esp_ip4_addr_t ip;
+  if (stationIp(&ip)) {
+    mdns_ip_addr_t address = {};
+    address.addr.type = ESP_IPADDR_TYPE_V4;
+    address.addr.u_addr.ip4.addr = ip.addr;
+    address.next = nullptr;
+    const esp_err_t added = mdns_delegate_hostname_add("spectrum-light", &address);
+    const esp_err_t service =
+        mdns_service_add_for_host(nullptr, "_http", "_tcp", "spectrum-light", 80, nullptr, 0);
+    Serial.printf("mDNS: spectrum-light.local as delegated host: %s, http service: %s\n",
+                  esp_err_to_name(added), esp_err_to_name(service));
+  }
   web.on("/", []() {
     String page = "Spectrum spike OK\nIP " + ipText() +
                   "\nMatter commissioned: " + (Matter.isDeviceCommissioned() ? "yes" : "no") +
@@ -101,7 +117,8 @@ static void startNetServices() {
     web.send(200, "text/plain", page);
   });
   web.begin();
-  Serial.printf("Web: open http://spectrum.local or http://%s\n", ipText().c_str());
+  Serial.printf("Web: try http://spectrum.local, http://spectrum-light.local and http://%s\n",
+                ipText().c_str());
   netServicesStarted = true;
 }
 
@@ -115,8 +132,10 @@ static void printPairingInfo() {
 }
 
 static void printStatus() {
-  Serial.printf("ip %s (arduino wifi %s, matter wifi %d) | matter paired %d online %d | heap %lu | ",
-                ipText().c_str(), WiFi.status() == WL_CONNECTED ? "UP" : "down",
+  char host[64] = "-";
+  if (mdns_hostname_get(host) != ESP_OK) snprintf(host, sizeof(host), "(none)");
+  Serial.printf("mdns host '%s' | ip %s (arduino wifi %s, matter wifi %d) | matter paired %d online %d | heap %lu | ",
+                host, ipText().c_str(), WiFi.status() == WL_CONNECTED ? "UP" : "down",
                 Matter.isWiFiConnected(), Matter.isDeviceCommissioned(), Matter.isOnline(),
                 (unsigned long)ESP.getFreeHeap());
   Serial.printf("core-0 probe: %lu runs, longest gap %lu us, gaps >30 ms: %lu\n",
