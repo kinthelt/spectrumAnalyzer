@@ -32,7 +32,17 @@ Rainbow and Twinkle work. The two spectrum modes still show a placeholder until 
 
 5. Upload, then open Serial Monitor at 115200 baud with line ending set to "Newline".
 
-Last tested with esp32 core 3.3.11 and FastLED 3.10.10.
+Last tested with esp32 core 3.3.13 and FastLED 3.10.10.
+
+**If linking fails** with undefined references inside the core (`btInUse`,
+`setCpuFrequencyMhz`, ...), usually after updating the board package, the cached core
+build is stale. Close the IDE, delete the cache, and rebuild:
+
+```bash
+rm -rf /tmp/arduino_cache_* /tmp/arduino_build_* ~/.cache/arduino
+```
+
+After a board-package update, also re-check the Tools menu: updates can reset Flash Size.
 
 Hardware constants (pins, strip length, current limit) are in
 `firmware/SpectrumAnalyzer/src/config/Config.h`.
