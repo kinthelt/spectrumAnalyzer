@@ -15,9 +15,11 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/modes/TwinkleMode.cpp \
 	$(SRC_DIR)/modes/SpectrumMode.cpp \
 	$(SRC_DIR)/audio/FilterBank.cpp \
-	$(SRC_DIR)/audio/LevelTracker.cpp
+	$(SRC_DIR)/audio/LevelTracker.cpp \
+	$(SRC_DIR)/net/WifiStateMachine.cpp \
+	$(SRC_DIR)/net/PowerCycleCounter.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests

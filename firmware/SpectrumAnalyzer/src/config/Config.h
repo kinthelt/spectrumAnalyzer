@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.1.0-skeleton";
+constexpr const char* kFirmwareVersion = "0.6.0";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
@@ -82,6 +82,20 @@ constexpr float kSmoothFallPerSecond = 0.8f;    // full to dark in ~1.25 s
 constexpr float kSilenceFadeSeconds = 2.0f;
 // No audio frame for this long (audio failed) counts as silence.
 constexpr uint32_t kAudioStaleMillis = 500;
+
+// ---- Network ------------------------------------------------------------------
+constexpr const char* kHostname = "spectrum";              // http://spectrum.local
+constexpr const char* kSetupNetworkName = "Spectrum-Setup";
+// Saved Wi-Fi not reachable for this long after boot: open the setup network.
+constexpr uint32_t kWifiConnectTimeoutMillis = 2u * 60u * 1000u;
+// Connected Wi-Fi lost for this long (router off, password changed): open setup.
+constexpr uint32_t kWifiLostBeforeSetupMillis = 5u * 60u * 1000u;
+// Setup network closes after this long and the saved Wi-Fi is tried again.
+constexpr uint32_t kSetupPortalMillis = 10u * 60u * 1000u;
+// Switching off at the plug this many times, each time within kPowerCycleWindow
+// of switching on, opens the setup network (the board is above the ceiling).
+constexpr int kPowerCyclesForSetup = 3;
+constexpr uint32_t kPowerCycleWindowMillis = 5000;
 
 // ---- Audio task --------------------------------------------------------------
 constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1

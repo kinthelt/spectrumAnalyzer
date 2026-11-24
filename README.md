@@ -10,16 +10,17 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 5 of 10: the spectrum display works. Modes: Spectrum Snappy, Spectrum Smooth,
-Solid, Gradient, Rainbow, Twinkle, with settings and 8 presets saved to flash, all changed
-from Serial Monitor for now (type `help`). Next: Wi-Fi and the web page.
+Build step 6 of 10: Wi-Fi. On first start the board opens a **Spectrum-Setup** network for
+entering your Wi-Fi details; after that it's at **http://spectrum.local** (a status page
+until step 7). Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
+settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
 
 ## Building the firmware (Arduino IDE)
 
 1. **Boards Manager:** install **esp32 by Espressif Systems**, version **3.3.x**. Don't
    update to 4.x yet: 4.0 moves to ESP-IDF 6.1 and hasn't been tested with this project
    or FastLED.
-2. **Library Manager:** install **FastLED**, version 3.9 or newer.
+2. **Library Manager:** install **FastLED** (3.9 or newer) and **WiFiManager** by tzapu.
 3. Open `firmware/SpectrumAnalyzer/SpectrumAnalyzer.ino`.
 4. **Tools** menu:
 
@@ -28,9 +29,14 @@ from Serial Monitor for now (type `help`). Next: Wi-Fi and the web page.
    | Board | ESP32S3 Dev Module |
    | Flash Size | 8MB (64Mb) |
    | PSRAM | OPI PSRAM |
+   | Partition Scheme | **Matter 8MB with spiffs** (room for Matter and over-the-air updates) |
    | USB CDC On Boot | Enabled (needed when using the board's native USB port) |
 
 5. Upload, then open Serial Monitor at 115200 baud with line ending set to "Newline".
+
+**Wi-Fi setup:** on first start (or after `forget`, or after switching the power off and on
+three times quickly), join the **Spectrum-Setup** network on a phone and enter your Wi-Fi
+details on the page that opens. The ESP32 needs a **2.4 GHz** network.
 
 Last tested with esp32 core 3.3.13 and FastLED 3.10.10.
 

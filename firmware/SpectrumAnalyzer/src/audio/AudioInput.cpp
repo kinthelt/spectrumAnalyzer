@@ -6,7 +6,9 @@
 
 bool AudioInput::setupI2s() {
   i2s_chan_config_t chanCfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-  chanCfg.dma_desc_num = 4;
+  // 8 blocks of buffering (~85 ms): rides out the ~55 ms core-0 stall seen
+  // while Wi-Fi connects and Matter pairs (Wi-Fi/Matter spike).
+  chanCfg.dma_desc_num = 8;
   chanCfg.dma_frame_num = config::kAudioBlockSize;   // one block per DMA buffer
   if (i2s_new_channel(&chanCfg, nullptr, &rx_) != ESP_OK) return false;
 

@@ -43,6 +43,8 @@ void SerialConsole::printHelp() {
       "  audio                  start/stop the live audio view (5 lines a second)\n"
       "  learn                  learn the room's noise for 10 s (after a new steady noise,\n"
       "                         e.g. a fan; keep music off while it runs)\n"
+      "  wifi                   show the Wi-Fi state and address\n"
+      "  forget                 forget the saved Wi-Fi and open the setup network\n"
       "  reset                  erase everything (asks to confirm)");
 }
 
@@ -150,6 +152,10 @@ void SerialConsole::runLine(char* line) {
   } else if (std::strcmp(cmd, "learn") == 0) {
     audio_.requestNoiseLearning();
     Serial.println("Learning the room's noise for 10 s - keep music off");
+  } else if (std::strcmp(cmd, "wifi") == 0) {
+    Serial.printf("Wi-Fi: %s\n", network_.summary().c_str());
+  } else if (std::strcmp(cmd, "forget") == 0) {
+    network_.forgetWifi();
   } else if (std::strcmp(cmd, "reset") == 0) {
     if (arg1 != nullptr && std::strcmp(arg1, "yes") == 0 && wasArmed) {
       settings_.factoryReset();

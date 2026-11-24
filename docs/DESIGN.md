@@ -208,12 +208,31 @@ Attack, fall, hold and flash times are tuning constants in `src/config/`, set on
 
 ### Wi-Fi setup
 
-- If no Wi-Fi is saved, or the saved network can't be reached for about 2 minutes, the board
-  starts its own network **Spectrum-Setup** with a captive setup page: join it on a phone,
+Decided after a bench spike (`experiments/WifiMatterSpike`): **setup page plus Matter**
+(option A). Wi-Fi is set up independently of Matter, so the web page and updates keep
+working even if Matter misbehaves; Matter later pairs over the network
+(`Matter.setBLECommissioningEnabled(false)`).
+
+- If no Wi-Fi is saved, the board opens its own network **Spectrum-Setup** with a captive
+  setup page (WiFiManager, non-blocking: LEDs and audio keep running). Join it on a phone,
   pick the home network, enter the password.
+- Saved network unreachable for 2 minutes after boot, or lost for 5 minutes while running:
+  the setup network opens. It closes after 10 minutes and the saved network is tried again
+  (the router may simply have been off).
 - Ways back into setup without reaching the board in the ceiling:
-  - **Forget Wi-Fi** button on the web page.
-  - **Power-cycle at the plug three times quickly** (each on-time under about 5 s).
+  - **Forget Wi-Fi** (Serial Monitor `forget` now; a web-page button in step 7).
+  - **Power-cycle at the plug three times quickly** (each on-time under 5 s).
+
+Spike findings that shaped the code:
+- Matter starts Wi-Fi through ESP-IDF directly, so Arduino's `WiFi.status()` can read
+  "down" while connected. Connection state is read from ESP-IDF (`esp_netif`) instead.
+- Matter renames the board's mDNS hostname, which broke `spectrum.local` after a minute.
+  `spectrum` is registered as a **delegated** mDNS host, which survives the rename.
+- Wi-Fi connecting and Matter pairing stalled core 0 once for ~55 ms (normally ~12 ms);
+  the microphone buffer was doubled to ~85 ms to ride it out.
+- Matter, Wi-Fi updates and the firmware fit the **"Matter 8MB with spiffs"** partition
+  scheme (two 3.25 MB app slots).
+- Apple Home pairing works, and survives switching off at the plug.
 
 ### Web page
 
@@ -268,8 +287,8 @@ Each step ends with something testable on the bench.
 
 | Item | Plan |
 |---|---|
-| Matter + WiFiManager on the same Wi-Fi radio | Build a small test sketch early, before committing to either library. |
-| Flash: Matter build size with two OTA slots in 8 MB | Check the partition scheme with a test build. |
-| Filter-bank CPU load on the S3 | Measured: 43% of core 0. Wi-Fi also runs on core 0; re-check in step 6. |
+| Matter + WiFiManager on the same Wi-Fi radio | Tested in the spike: works (setup page first, then Matter pairs over Wi-Fi). |
+| Flash: Matter build size with two OTA slots in 8 MB | "Matter 8MB with spiffs" scheme: two 3.25 MB app slots. |
+| Filter-bank CPU load on the S3 | Measured: 43% of core 0. With Wi-Fi and Matter running, a stand-in kept ~12 ms timing (one 55 ms stall while pairing; mic buffer doubled). |
 | Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
 | `E cache: esp_cache_msync(113): invalid addr or null pointer` logged once at boot during FastLED start-up (core 3.3.11, FastLED 3.10.10), with or without PSRAM | No visible effect so far. Re-check in step 4 when audio DMA runs alongside the LED driver. |
