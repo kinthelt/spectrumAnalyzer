@@ -1,4 +1,4 @@
-#include "Network.h"
+#include "Connectivity.h"
 
 #include <WiFi.h>
 
@@ -6,7 +6,7 @@
 #include "../util/Log.h"
 #include "StationIp.h"
 
-void Network::begin(bool forceSetup) {
+void Connectivity::begin(bool forceSetup) {
   WiFi.setHostname(config::kHostname);   // name shown in the router's device list
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -25,7 +25,7 @@ void Network::begin(bool forceSetup) {
   lastLoggedState_ = machine_.state();
 }
 
-void Network::apply(WifiStateMachine::Action action) {
+void Connectivity::apply(WifiStateMachine::Action action) {
   switch (action) {
     case WifiStateMachine::Action::None:
       break;
@@ -50,7 +50,7 @@ void Network::apply(WifiStateMachine::Action action) {
   }
 }
 
-void Network::loop(uint32_t nowMillis) {
+void Connectivity::loop(uint32_t nowMillis) {
   if (portalOpen_) manager_.process();
 
   if (nowMillis - savedCheckedMillis_ >= 1000) {
@@ -83,7 +83,7 @@ void Network::loop(uint32_t nowMillis) {
   page_.loop();
 }
 
-void Network::forgetWifi() {
+void Connectivity::forgetWifi() {
   LOG_INFO("wifi", "forgetting the saved Wi-Fi");
   page_.stop();
   manager_.resetSettings();   // erases the saved network
@@ -91,7 +91,7 @@ void Network::forgetWifi() {
   apply(machine_.forget(millis()));
 }
 
-String Network::summary() {
+String Connectivity::summary() {
   uint32_t ip = 0;
   String s = WifiStateMachine::stateName(machine_.state());
   if (stationIp(&ip)) {

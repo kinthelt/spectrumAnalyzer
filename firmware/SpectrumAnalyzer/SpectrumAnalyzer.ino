@@ -21,7 +21,7 @@
 #include "src/diag/SerialConsole.h"
 #include "src/leds/LedOutput.h"
 #include "src/modes/ModeManager.h"
-#include "src/net/Network.h"
+#include "src/net/Connectivity.h"
 #include "src/net/PowerCycleCounter.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
@@ -32,9 +32,9 @@ static NvsSettingsStore store;
 static SettingsManager settings(store);
 static AudioInput audio;
 static AudioMonitor audioMonitor;
-static Network network;
+static Connectivity connectivity;
 static PowerCycleCounter powerCycles(store);
-static SerialConsole console(settings, audio, audioMonitor, network);
+static SerialConsole console(settings, audio, audioMonitor, connectivity);
 static ModeManager modes;
 static LedOutput leds;
 static FrameStats frameStats(config::kStatsIntervalMillis);
@@ -61,7 +61,7 @@ static String describeStatus() {
   text += "\nColour A: #" + String(colourA);
   text += "\nAudio: ";
   text += audioFrame.silent ? "silent" : "sound";
-  text += "\nWi-Fi: " + network.summary();
+  text += "\nWi-Fi: " + connectivity.summary();
   text += "\nUp for " + String(millis() / 1000) + " s";
   text += "\n\nThe full web page arrives in build step 7.\n";
   return text;
@@ -79,8 +79,8 @@ void setup() {
   frameStats.begin(millis());
 
   const bool forceSetup = powerCycles.begin();
-  network.setStatusDescriber(describeStatus);
-  network.begin(forceSetup);
+  connectivity.setStatusDescriber(describeStatus);
+  connectivity.begin(forceSetup);
 
   console.printStatus();
   LOG_INFO("boot", "type 'help' in Serial Monitor for commands");
@@ -89,7 +89,7 @@ void setup() {
 void loop() {
   console.poll();
   settings.tick(millis());
-  network.loop(millis());
+  connectivity.loop(millis());
   powerCycles.tick(millis());
 
   // Audio frames arrive ~94 times a second from core 0; take the newest.

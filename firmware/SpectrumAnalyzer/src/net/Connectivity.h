@@ -1,4 +1,5 @@
-// Everything Wi-Fi: connecting to the saved network, the "Spectrum-Setup"
+// Everything Wi-Fi (named Connectivity because Arduino-ESP32 already has a
+// global object called Network): connecting to the saved network, the "Spectrum-Setup"
 // network for entering Wi-Fi details, the spectrum.local name and the status page.
 // Runs from the Arduino loop on core 1 and never blocks, so the LEDs and audio
 // keep running while the setup network is open.
@@ -10,7 +11,7 @@
 #include "StatusPage.h"
 #include "WifiStateMachine.h"
 
-class Network {
+class Connectivity {
  public:
   // forceSetup: open the setup network at once (power-cycle trick).
   void begin(bool forceSetup);

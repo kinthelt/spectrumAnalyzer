@@ -153,9 +153,9 @@ void SerialConsole::runLine(char* line) {
     audio_.requestNoiseLearning();
     Serial.println("Learning the room's noise for 10 s - keep music off");
   } else if (std::strcmp(cmd, "wifi") == 0) {
-    Serial.printf("Wi-Fi: %s\n", network_.summary().c_str());
+    Serial.printf("Wi-Fi: %s\n", connectivity_.summary().c_str());
   } else if (std::strcmp(cmd, "forget") == 0) {
-    network_.forgetWifi();
+    connectivity_.forgetWifi();
   } else if (std::strcmp(cmd, "reset") == 0) {
     if (arg1 != nullptr && std::strcmp(arg1, "yes") == 0 && wasArmed) {
       settings_.factoryReset();
