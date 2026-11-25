@@ -39,6 +39,12 @@ class AudioInput {
   // new steady noise such as a fan). Safe to call from any core.
   void requestNoiseLearning() { learnRequested_.store(true); }
 
+  // Pauses the analysis (about 43% of core 0), e.g. during a firmware update,
+  // when writing flash also takes much of core 0. The microphone keeps being
+  // read so its buffers stay drained; no frames are published meanwhile.
+  // Safe to call from any core.
+  void setPaused(bool paused) { paused_.store(paused); }
+
   // Count of I2S reads that failed or came back short (should stay 0).
   uint32_t readErrors() const { return readErrors_.load(); }
 
@@ -59,4 +65,5 @@ class AudioInput {
   float samples_[config::kAudioBlockSize];
   std::atomic<uint32_t> readErrors_{0};   // written on core 0, read on core 1
   std::atomic<bool> learnRequested_{false};   // set on core 1, taken on core 0
+  std::atomic<bool> paused_{false};           // set on core 1, read on core 0
 };

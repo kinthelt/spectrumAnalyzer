@@ -110,9 +110,17 @@ send_update() {   # $1: .bin file, $2: address
   echo "Lights at $url are on version $before. Sending $(basename "$bin") ($(du -h "$bin" | cut -f1))..." >&2
   local reply
   reply="$(mktemp)"
-  if ! curl --fail-with-body --progress-bar -o "$reply" \
-       -F "firmware=@$bin;type=application/octet-stream" "$url/api/update"; then
-    echo "The lights refused the update: $(json_field 'd.get("error", d)' <"$reply" 2>/dev/null || cat "$reply")" >&2
+  local status=0 refusal
+  curl --fail-with-body --progress-bar -o "$reply" \
+       -F "firmware=@$bin;type=application/octet-stream" "$url/api/update" || status=$?
+  if [[ $status -ne 0 ]]; then
+    if refusal="$(json_field 'd["error"]' <"$reply" 2>/dev/null)"; then
+      echo "The lights refused the update: $refusal" >&2
+    else
+      # No answer from the lights: the connection dropped (curl error $status).
+      echo "The connection to the lights was lost part-way (curl error $status). They keep their" >&2
+      echo "current firmware. If they restarted, 'tools/build.sh monitor' shows why." >&2
+    fi
     rm -f "$reply"
     exit 1
   fi

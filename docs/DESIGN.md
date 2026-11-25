@@ -321,6 +321,11 @@ Spike findings that shaped the code:
   trial, the bootloader goes back by itself. Settings → Status notes when an update was undone.
   A power cut or router outage during those minutes also means going back: the update is
   simply sent again.
+- **Audio analysis pauses during an upload.** Erasing flash freezes core 0 for ~45 ms per
+  4 KB, close to half of core 0 at upload speed; with the analysis's 43% and the network
+  task, core 0's idle task starved and the task watchdog restarted the board part-way
+  (bench). The microphone is still read, so its buffers stay drained; the analysis resumes
+  if the update fails, and the board restarts if it succeeds.
 - **During an upload** the Arduino loop is busy receiving (the web server handles one request
   at a time), so other phones' pages wait; the LEDs and audio run on their own tasks.
 

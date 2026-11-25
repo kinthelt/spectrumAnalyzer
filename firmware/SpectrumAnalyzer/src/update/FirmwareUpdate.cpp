@@ -159,6 +159,15 @@ void FirmwareUpdate::loop(bool healthy, uint32_t nowMillis) {
 
 void FirmwareUpdate::publish(uint32_t nowMillis) {
   (void)nowMillis;
+  // Every change of phase passes through here: pause the audio analysis while
+  // an update is being received or is about to restart, resume after a failure.
+  const bool pause = busy();
+  if (pause != othersPaused_) {
+    othersPaused_ = pause;
+    if (pauseHook_) pauseHook_(pause);
+    LOG_INFO("update", "audio analysis %s", pause ? "paused for the update" : "resumed");
+  }
+
   UpdateProgress p;
   p.phase = toProgressPhase(session_.phase());
   p.phaseSinceMillis = session_.phaseSinceMillis();

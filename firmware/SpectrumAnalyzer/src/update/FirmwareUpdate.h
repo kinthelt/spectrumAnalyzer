@@ -37,6 +37,12 @@ class FirmwareUpdate {
   // Called just before restarting into new firmware (to save settings).
   void setBeforeRestart(std::function<void()> fn) { beforeRestart_ = fn; }
 
+  // Called with true when an upload starts and false if it fails (after success
+  // the board restarts). Used to pause the audio analysis: writing flash freezes
+  // core 0 for about 45 ms per 4 KB, and together with the analysis's 43% that
+  // starved core 0 until the task watchdog restarted the board (bench, step 8).
+  void setPauseHook(std::function<void(bool)> fn) { pauseHook_ = fn; }
+
   // ---- The upload, from WebUi ----
   // contentLength: the request's length (a little more than the file). Returns
   // "" if accepted, or why not.
@@ -70,6 +76,8 @@ class FirmwareUpdate {
   Shared<UpdateProgress> progress_;
   UpdateProgress published_;
   std::function<void()> beforeRestart_;
+  std::function<void(bool)> pauseHook_;
+  bool othersPaused_ = false;
   bool lastUndone_ = false;
   // Timing of the current upload, for logTransfer().
   uint32_t uploadStartMillis_ = 0;

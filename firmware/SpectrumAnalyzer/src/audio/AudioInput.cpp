@@ -83,6 +83,7 @@ void AudioInput::run() {
       ++readErrors_;
       continue;
     }
+    if (paused_.load()) continue;   // block read and dropped: costs almost nothing
 
     const uint32_t start = micros();
     for (int i = 0; i < config::kAudioBlockSize; ++i) samples_[i] = raw_[i] * kScale;

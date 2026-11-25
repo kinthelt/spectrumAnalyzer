@@ -115,6 +115,7 @@ void setup() {
   publishSettings();
   firmwareUpdate.begin(millis());
   firmwareUpdate.setBeforeRestart([] { settings.flush(); });
+  firmwareUpdate.setPauseHook([](bool paused) { audio.setPaused(paused); });
   audioStarted = audio.begin();
   ledTask.start();
 
