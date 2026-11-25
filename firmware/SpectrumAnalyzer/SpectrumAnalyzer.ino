@@ -9,6 +9,7 @@
 //   src/net/       Wi-Fi, setup network, spectrum.local
 //   src/web/       the web page and its API
 //   src/update/    firmware updates over Wi-Fi, and going back if one fails
+//   src/smarthome/ Apple Home and Google Home, through Matter
 //   src/diag/      statistics, live audio view and the serial console
 //   src/util/      logging, colours, boot information
 //
@@ -27,6 +28,7 @@
 #include "src/net/StationIp.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
+#include "src/smarthome/MatterBridge.h"
 #include "src/update/FirmwareUpdate.h"
 #include "src/util/Log.h"
 #include "src/util/Shared.h"
@@ -36,7 +38,8 @@
 // Who runs where:
 //   core 0  audio task (AudioInput)               mic, filter bank, levels
 //   core 1  LED task (LedTask), priority 3        modes, FastLED, every 10 ms
-//   core 1  Arduino loop(), priority 1            settings, console, Wi-Fi, web
+//   core 1  Arduino loop(), priority 1            settings, console, Wi-Fi, web, Home sync
+//   Matter's own tasks                            Apple/Google Home; changes are posted to the loop
 // The loop is the only writer of settings; it publishes a copy for the LED task.
 
 static NvsSettingsStore store;
@@ -45,6 +48,7 @@ static Shared<LightSettings> sharedSettings;
 static uint32_t publishedRevision = 0;
 static AudioInput audio;
 static FirmwareUpdate firmwareUpdate;
+static MatterBridge smartHome(settings);
 static LedTask ledTask(audio, sharedSettings, firmwareUpdate.progress());
 static AudioMonitor audioMonitor;
 static Connectivity connectivity;
@@ -65,6 +69,8 @@ static WebUi webUi(settings, firmwareUpdate, WebUi::Hooks{
                                  deviceStatus,
                                  [] { audio.requestNoiseLearning(); },
                                  [] { connectivity.forgetWifi(); },
+                                 [] { return smartHome.openPairing(); },
+                                 [] { return smartHome.removeAllHomes(); },
                              });
 static bool audioStarted = false;
 
@@ -76,6 +82,13 @@ static DeviceStatus deviceStatus() {
   st.updateMaxBytes = firmwareUpdate.maxBytes();
   st.updateOnTrial = firmwareUpdate.onTrial();
   st.updateLastUndone = firmwareUpdate.lastUpdateUndone();
+
+  const SmartHomeStatus& home = smartHome.status();
+  st.homeStarted = home.started;
+  st.homeApps = home.homes;
+  st.homePairingOpen = home.pairingOpen;
+  st.homeManualCode = home.manualCode;
+  st.homeQrPayload = home.qrPayload;
 
   uint32_t ip = 0;
   if (connectivity.connected() && stationIp(&ip)) {
@@ -134,6 +147,8 @@ void loop() {
   connectivity.loop(millis());
   // New firmware counts as good once it is on the Wi-Fi with the web page running.
   firmwareUpdate.loop(connectivity.connected() && webUi.running(), millis());
+  // Apple Home / Google Home: starts with the first Wi-Fi connection.
+  smartHome.loop(connectivity.connected(), millis());
   powerCycles.tick(millis());
 
   // Live audio view: read the snapshot (the LED task consumes the queue).

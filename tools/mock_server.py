@@ -7,7 +7,8 @@ then open http://localhost:8080 (or this computer's address from a phone on the 
 Wi-Fi). It serves the page exactly as the firmware does (built by tools/embed_web.py,
 with the QR library inline) and answers the same API as src/web/WebApi.cpp, keeping
 state in memory. Edits to web/ show up on reload. POST /api/update applies the same
-checks as the firmware to an uploaded file, then pretends to restart (no answers for 3 s). GET /__requests lists the requests received (used by the
+checks as the firmware to an uploaded file, then pretends to restart (no answers for 3 s).
+Apple/Google Home pairing is simulated; POST /__pair (field app) pretends an app paired. GET /__requests lists the requests received (used by the
 browser tests).
 """
 import argparse
@@ -58,6 +59,8 @@ class Lights:
         self.version = "mock"
         self.down_until = 0
         self.uploads = 0
+        self.homes = []
+        self.pairing_until = time.time() + 900   # unpaired at start: pairing open
         self.requests = []
 
     def state(self):
@@ -76,6 +79,7 @@ class Lights:
                 "audio": {"ok": True, "silent": False, "learningNoise": time.time() < self.learning_until,
                           "loadPercent": 43},
                 "update": {"maxBytes": UPDATE_MAX_BYTES, "onTrial": False, "lastUndone": False},
+                "smartHome": self.smart_home(),
             },
         }
 
@@ -154,8 +158,18 @@ class Lights:
         self.started = self.down_until
         return ""
 
+    def smart_home(self):
+        open_ = time.time() < self.pairing_until
+        return {"started": True, "homes": list(self.homes), "pairingOpen": open_,
+                "code": "34970112332" if open_ else "", "qr": "MT:Y.K9042C00KA0648G00" if open_ else ""}
+
     def action(self, name):
-        if name == "learn-noise":
+        if name == "home-pair":
+            self.pairing_until = time.time() + 900
+        elif name == "home-unpair":
+            self.homes = []
+            self.pairing_until = time.time() + 900
+        elif name == "learn-noise":
             self.learning_until = time.time() + 10
         elif name == "forget-wifi":
             pass
@@ -237,7 +251,12 @@ class Handler(BaseHTTPRequestHandler):
                                                keep_blank_values=True).items()}
         with LIGHTS.lock:
             LIGHTS.requests.append({"method": "POST", "path": path, "fields": fields, "t": time.time()})
-            if path == "/api/state":
+            if path == "/__pair":   # test hook: an app paired, which closes pairing
+                LIGHTS.homes.append(fields.get("app", "Apple Home"))
+                LIGHTS.pairing_until = 0
+                LIGHTS.revision += 1
+                err = ""
+            elif path == "/api/state":
                 err = LIGHTS.apply_state(fields)
             elif path.startswith("/api/preset/"):
                 err = LIGHTS.preset(path.rsplit("/", 1)[1], fields)

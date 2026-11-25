@@ -191,6 +191,22 @@ footer.row { margin-top: 2px; }
     <dl class="facts" id="facts"></dl>
   </section>
 
+  <section class="card" aria-labelledby="h-home">
+    <h2 id="h-home">Apple Home &amp; Google Home</h2>
+    <div class="action">
+      <p class="fw-msg" id="home-state"></p>
+      <div id="home-pairing" hidden>
+        <div class="qr" id="home-qr"></div>
+        <p class="url" id="home-code"></p>
+        <p>In Apple Home: <b>+ › Add Accessory</b>, then scan the code. In Google Home:
+           <b>+ › Device › Matter-enabled device</b>. The apps warn that the lights aren't
+           certified (they're home-made): choose to add them anyway.</p>
+      </div>
+      <button class="btn" id="home-pair-btn" hidden>Allow pairing (15 minutes)</button>
+      <button class="btn danger" id="home-unpair-btn" hidden>Remove from all smart homes…</button>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="h-firmware">
     <h2 id="h-firmware">Firmware update</h2>
     <div class="action">
@@ -283,6 +299,7 @@ footer.row { margin-top: 2px; }
 //   POST /api/preset/<action>        save | recall | rename | delete (slot, name)
 //   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
 //   POST /api/update                 a firmware file (multipart, field "firmware")
+//   POST /api/action/home-pair | home-unpair   Apple Home / Google Home pairing
 // Every POST answers with the new state (or {"error": "..."}).
 // ---------------------------------------------------------------------------
 
@@ -437,7 +454,43 @@ function renderStatus(s) {
   note.textContent = u.onTrial ? "Just updated: the new firmware stays once it has been on Wi-Fi for 30 seconds." :
       u.lastUndone ? "The last update was undone: it didn't stay on Wi-Fi, so the previous firmware came back." : "";
   note.hidden = !note.textContent;
+  renderSmartHome(st.smartHome);
 }
+
+// ---- Apple Home / Google Home ---------------------------------------------------------------
+let homeQrShown = "";
+
+function listWords(items) {
+  return items.length < 2 ? items.join("") : items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+}
+
+function renderSmartHome(h) {
+  const paired = h.homes.length > 0;
+  $("home-state").textContent = !h.started ? "This starts once the lights are on Wi-Fi."
+    : h.pairingOpen ? (paired ? `Paired with ${listWords(h.homes)}. Pairing is open for another app.`
+                              : "Pairing is open: add the lights in a Home app now.")
+    : paired ? `Paired with ${listWords(h.homes)}.` : "Not paired with a Home app.";
+  const showCode = h.started && h.pairingOpen && !!h.code;
+  $("home-pairing").hidden = !showCode;
+  if (showCode && h.qr !== homeQrShown) {
+    const qr = qrcode(0, "M");
+    qr.addData(h.qr);
+    qr.make();
+    $("home-qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+    homeQrShown = h.qr;
+  }
+  if (showCode) $("home-code").textContent = h.code.replace(/^(\d{4})(\d{3})(\d{4})$/, "$1-$2-$3");
+  $("home-pair-btn").hidden = !h.started || h.pairingOpen;
+  $("home-pair-btn").textContent = paired ? "Allow another app to pair (15 minutes)" : "Allow pairing (15 minutes)";
+  $("home-unpair-btn").hidden = !h.started || !paired;
+}
+
+$("home-pair-btn").onclick = () =>
+  call("/api/action/home-pair", {}).then((d) => d && toast("Pairing is open for 15 minutes"));
+$("home-unpair-btn").onclick = () => confirmThen("Remove from all smart homes?",
+  "Apple Home and Google Home lose the lights (delete them in those apps too). Wi-Fi, settings and " +
+  "presets stay, and the lights can be paired again afterwards.",
+  "Remove", () => call("/api/action/home-unpair", {}).then((d) => d && toast("Removed from all smart homes")));
 
 function signal(rssi) {
   const word = rssi >= -60 ? "strong" : rssi >= -70 ? "good" : rssi >= -80 ? "weak" : "very weak";

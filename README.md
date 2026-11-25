@@ -10,10 +10,11 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 8 of 10: firmware updates over Wi-Fi. On first start the board opens a
+Build step 9 of 10: Apple Home and Google Home (Matter). On first start the board opens a
 **Spectrum-Setup** network for entering your Wi-Fi details; after that the web page is at
 **http://spectrum.local** (or the board's IP address, shown under Share on the page), and new
-firmware can be installed from its Settings page or with `tools/build.sh ota`. Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
+firmware can be installed from its Settings page or with `tools/build.sh ota`. Pairing with
+Apple Home or Google Home is on the same Settings page. Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
 settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
 
 ## Building from the command line

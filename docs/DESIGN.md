@@ -116,6 +116,7 @@ firmware/SpectrumAnalyzer/
                             (generated)
   src/update/               UpdateSession (upload rules), BootValidator (keep or go back),
                             FirmwareMarker (PC-tested); FirmwareUpdate (Update library, OTA glue)
+  src/smarthome/            HomeRules (Home <-> settings, PC-tested); MatterBridge (Matter library)
   src/diag/, src/util/      statistics, serial console; logging, colours, JSON, Shared<T>
 web/                        the web page source (index.html, vendor/qrcode.js)
 tools/                      build.sh, embed_web.py (page -> WebPage.h), mock_server.py
@@ -331,15 +332,32 @@ Spike findings that shaped the code:
 
 ### Matter
 
-- The strip appears as one Matter **colour light**: on/off, brightness, colour. It is paired
-  once in Apple Home and once in Google Home (Matter allows several controllers).
-- Changes from Apple Home or Google Home **adjust the current mode** and never switch modes:
-  - **On/off** turns the strip on or off.
-  - **Brightness** sets the global brightness.
-  - **Colour** sets the current mode's colour (colour A). In the spectrum modes it replaces
-    the rainbow cycle with that fixed colour; choosing the rainbow again is done on the web
-    page.
-- Choosing between modes stays on the web page.
+- The strip appears as one Matter **colour light with white temperature** ("Spectrum Lights",
+  `MatterEnhancedColorLight`): on/off, brightness, colour wheel, and Apple Home's warm-to-cool
+  white presets. It is paired once in Apple Home and once in Google Home (Matter allows
+  several controllers). Matter starts once the lights are first on Wi-Fi; pairing is over
+  Wi-Fi, never Bluetooth (step 6 spike).
+- From Apple Home or Google Home (decided in step 9, replacing "never switch modes"):
+  - **On/off** and **brightness** change only that; the mode stays.
+  - **A colour or a white** switches to **Solid** and becomes colour A, from any mode (the
+    other modes are chosen on the web page). Whites are mixed from red, green and blue
+    (blackbody approximation), as the strip has no white LEDs. Colour B is left alone.
+  - Brightness: Matter's 1-254 maps to our 1-255, exactly both ways.
+- **To Home:** on/off, brightness and colour A follow the lights (web page, presets, console)
+  within ~0.2 s. A colour or white chosen in Home isn't sent back, so Home keeps showing it.
+- **Threads:** Home's changes arrive on Matter's own task and are posted to a small inbox;
+  the Arduino loop applies them (it stays the settings' only writer). The library reports some
+  of our own sends back through the same callbacks; those arrive on the loop's own task
+  while it is sending, and are ignored.
+- **Settings → Apple Home & Google Home card:** which apps it's paired with (from the vendor
+  ID each leaves when pairing); "Allow pairing (15 minutes)"; the QR code and the 11-digit
+  code, shown only while pairing is open; "Remove from all smart homes" (confirmed).
+  - Unpaired lights open pairing for 15 minutes at start-up, then close; the button reopens it.
+  - Removing deletes each pairing and reopens pairing. It deliberately doesn't use the
+    library's `Matter.decommission()`: that is a Matter factory reset, which in the Matter
+    SDK's ESP32 code also erases the saved Wi-Fi (`esp_wifi_restore()`).
+- The rules (conversions, inbox, applying, following, names, QR text) are plain C++
+  (`src/smarthome/HomeRules`) with unit tests; `MatterBridge` connects them to the library.
 - Hubs: Apple TV (Apple Home) and Google Nest speaker (Google Home), both confirmed.
 
 ---
@@ -356,7 +374,7 @@ Each step ends with something testable on the bench.
 6. **Wi-Fi:** setup portal, mDNS, power-cycle reset.
 7. **Web page and API.**
 8. **Wi-Fi updates:** upload checks, update colours on the strip, automatic rollback.
-9. **Matter.**
+9. **Matter:** Apple Home and Google Home, pairing card on the Settings page.
 10. **Install:** Perma-Proto board, ceiling wiring, current limit raised to the final value.
 
 ---

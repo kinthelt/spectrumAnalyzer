@@ -275,6 +275,44 @@ async function openPage(browser, phone, scheme = "light") {
       await page.waitForSelector("#main-view:not([hidden])");
     });
 
+    await check("Apple/Google Home: code while pairing is open, paired apps listed, remove asks first", async () => {
+      await page.click("#settings-btn");
+      await page.waitForSelector("#settings-view:not([hidden])");
+      // Unpaired, pairing open (as after first start): QR code and the code to type.
+      await page.waitForSelector("#home-qr svg path");
+      assert.strictEqual(await page.textContent("#home-code"), "3497-011-2332");
+      assert.ok(!(await page.isVisible("#home-unpair-btn")), "nothing to remove yet");
+      await page.screenshot({ path: path.join(OUT, `${phone}-home-pairing.png`), fullPage: true });
+
+      // Apple Home pairs: the code goes away, Apple Home is listed.
+      await fetch(`${BASE}/__pair`, { method: "POST", body: new URLSearchParams({ app: "Apple Home" }) });
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent === "Paired with Apple Home.",
+                                 null, { timeout: 4000 });
+      assert.ok(!(await page.isVisible("#home-pairing")), "no code once pairing has closed");
+      assert.strictEqual(await page.textContent("#home-pair-btn"), "Allow another app to pair (15 minutes)");
+
+      // Allow Google to pair, and it does.
+      await page.click("#home-pair-btn");
+      await page.waitForSelector("#home-qr svg path");
+      await fetch(`${BASE}/__pair`, { method: "POST", body: new URLSearchParams({ app: "Google Home" }) });
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent ===
+                                 "Paired with Apple Home and Google Home.", null, { timeout: 4000 });
+
+      // Remove from all: Cancel keeps them; confirming removes them and pairing reopens.
+      const t0 = Date.now() / 1000;
+      await page.click("#home-unpair-btn");
+      await page.waitForSelector("#confirm-dialog[open]");
+      await page.click('#confirm-dialog button[value="cancel"]');
+      await page.waitForTimeout(200);
+      assert.strictEqual((await requests(t0)).filter((r) => r.path.includes("home-unpair")).length, 0);
+      await page.click("#home-unpair-btn");
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Pairing is open"));
+      assert.ok(await page.isVisible("#home-qr svg"));
+      await page.click("#back-btn");
+      await page.waitForSelector("#main-view:not([hidden])");
+    });
+
     await check("no script errors", async () => {
       assert.deepStrictEqual(errors, []);
     });

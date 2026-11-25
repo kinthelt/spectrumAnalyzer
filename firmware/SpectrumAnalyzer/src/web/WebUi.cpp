@@ -69,7 +69,7 @@ void WebUi::addRoutes() {
     const String path = String("/api/preset/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handlePreset(action); });
   }
-  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings"}) {
+  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings", "home-pair", "home-unpair"}) {
     const String path = String("/api/action/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handleAction(action); });
   }
@@ -127,13 +127,23 @@ void WebUi::handleAction(const char* action) {
     LOG_INFO("web", "forget Wi-Fi requested");
     forgetPending_ = true;   // after this reply has gone out (see loop)
     forgetRequestedMillis_ = millis();
+  } else if (name == "home-pair") {
+    LOG_INFO("web", "allow pairing requested");
+    if (!hooks_.openPairing || !hooks_.openPairing()) {
+      return sendError(503, "Pairing couldn't be opened. Are the lights on Wi-Fi?");
+    }
+  } else if (name == "home-unpair") {
+    LOG_INFO("web", "remove from all smart homes requested");
+    if (!hooks_.removeAllHomes || !hooks_.removeAllHomes()) {
+      return sendError(503, "The pairings couldn't all be removed. Try again in a moment.");
+    }
   }
   sendState();
 }
 
 // The web server calls this for each piece of the uploaded file. The whole
 // upload happens inside one handleClient() call, so the Arduino loop is paused
-// meanwhile; the LED task (its own task) shows the progress.
+// meanwhile; the LED task (its own task) keeps the strip in the update colours.
 void WebUi::handleUploadChunk() {
   HTTPUpload& up = server_.upload();
   switch (up.status) {

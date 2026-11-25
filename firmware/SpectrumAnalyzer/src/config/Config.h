@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.8.0";
+constexpr const char* kFirmwareVersion = "0.9.0";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
@@ -112,6 +112,11 @@ constexpr uint8_t kUpdateBrightness = 80;                 // update colours show
 // never declares itself good, so after kUpdateGiveUpMillis the previous firmware
 // returns. Always false otherwise.
 constexpr bool kTestUpdateNeverConfirms = false;
+
+// ---- Apple Home / Google Home (Matter) ----------------------------------------------
+constexpr const char* kSmartHomeName = "Spectrum Lights";  // the name the Home apps first show
+constexpr uint32_t kPairingWindowSeconds = 15u * 60;       // "Allow pairing" keeps it open this long
+constexpr uint32_t kHomeSendIntervalMillis = 200;          // changes go to Home at most 5 times a second
 
 // ---- LED task -----------------------------------------------------------------
 // Core 1, above the Arduino loop (priority 1), so network work never delays frames.

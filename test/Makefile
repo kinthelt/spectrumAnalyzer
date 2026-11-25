@@ -24,9 +24,10 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/update/FirmwareMarker.cpp \
 	$(SRC_DIR)/update/UpdateSession.cpp \
 	$(SRC_DIR)/update/BootValidator.cpp \
-	$(SRC_DIR)/modes/UpdateBar.cpp
+	$(SRC_DIR)/modes/UpdateBar.cpp \
+	$(SRC_DIR)/smarthome/HomeRules.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp test_update.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp test_update.cpp test_home.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests

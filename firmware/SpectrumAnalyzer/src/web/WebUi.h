@@ -4,7 +4,8 @@
 //   GET  /api/state            everything the page shows (WebApi::stateJson)
 //   POST /api/state            change on, mode, brightness, colours
 //   POST /api/preset/<action>  save | recall | rename | delete
-//   POST /api/action/<name>    learn-noise | forget-wifi | reset-settings
+//   POST /api/action/<name>    learn-noise | forget-wifi | reset-settings |
+//                              home-pair | home-unpair (Apple Home / Google Home)
 //   POST /api/update           a firmware file (multipart form, field "firmware")
 //
 // This class is only the HTTP glue: what a request means is decided in WebApi,
@@ -28,6 +29,8 @@ class WebUi : public HttpService {
     std::function<DeviceStatus()> status;   // facts for the status panel
     std::function<void()> learnNoise;       // start learning the room's noise
     std::function<void()> forgetWifi;       // erase Wi-Fi and open the setup network
+    std::function<bool()> openPairing;      // let a Home app pair for a while
+    std::function<bool()> removeAllHomes;   // remove every Home pairing
   };
 
   WebUi(SettingsManager& settings, FirmwareUpdate& update, Hooks hooks)

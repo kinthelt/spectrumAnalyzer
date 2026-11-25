@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "../settings/SettingsManager.h"
 
@@ -39,6 +40,12 @@ struct DeviceStatus {
   uint32_t updateMaxBytes = 0;    // largest firmware file the spare slot takes
   bool updateOnTrial = false;     // just updated; not yet declared good
   bool updateLastUndone = false;  // the last update was undone (previous firmware came back)
+  // Apple Home / Google Home (Matter)
+  bool homeStarted = false;              // Matter runs once the lights are on Wi-Fi
+  std::vector<std::string> homeApps;     // apps it is paired with
+  bool homePairingOpen = false;
+  std::string homeManualCode;            // only sent to the page while pairing is open
+  std::string homeQrPayload;             // "MT:...", likewise
 };
 
 namespace web_api {

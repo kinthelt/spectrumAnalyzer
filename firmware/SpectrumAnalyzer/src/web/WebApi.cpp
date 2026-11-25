@@ -109,6 +109,16 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   j.key("onTrial").value(status.updateOnTrial);
   j.key("lastUndone").value(status.updateLastUndone);
   j.endObject();
+  j.key("smartHome").beginObject();
+  j.key("started").value(status.homeStarted);
+  j.key("homes").beginArray();
+  for (const std::string& app : status.homeApps) j.value(app);
+  j.endArray();
+  j.key("pairingOpen").value(status.homePairingOpen);
+  // The codes let anyone pair while pairing is open, so they are only shown then.
+  j.key("code").value(status.homePairingOpen ? status.homeManualCode : std::string());
+  j.key("qr").value(status.homePairingOpen ? status.homeQrPayload : std::string());
+  j.endObject();
   j.endObject();
 
   j.endObject();

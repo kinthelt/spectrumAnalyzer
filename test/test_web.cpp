@@ -92,6 +92,26 @@ TEST(web_state_json_has_everything_the_page_needs) {
   }
 }
 
+TEST(web_state_json_smart_home_codes_only_while_pairing_is_open) {
+  FakeSettingsStore store;
+  SettingsManager settings(store);
+  settings.begin();
+  DeviceStatus st = sampleStatus();
+  st.homeStarted = true;
+  st.homeApps = {"Apple Home", "Google Home"};
+  st.homeManualCode = "34970112332";
+  st.homeQrPayload = "MT:Y.K9042C00KA0648G00";
+  std::string json = web_api::stateJson(settings, st);
+  CHECK(json.find("\"homes\":[\"Apple Home\",\"Google Home\"]") != std::string::npos);
+  CHECK(json.find("34970112332") == std::string::npos);   // closed: no codes
+  CHECK(json.find("MT:") == std::string::npos);
+  st.homePairingOpen = true;
+  json = web_api::stateJson(settings, st);
+  dumpJson("state_pairing", json);
+  CHECK(json.find("\"code\":\"34970112332\"") != std::string::npos);
+  CHECK(json.find("\"qr\":\"MT:Y.K9042C00KA0648G00\"") != std::string::npos);
+}
+
 TEST(web_state_json_when_offline) {
   FakeSettingsStore store;
   SettingsManager settings(store);
