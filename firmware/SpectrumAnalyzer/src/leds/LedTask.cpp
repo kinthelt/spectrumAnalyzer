@@ -5,8 +5,9 @@
 #include "../modes/UpdateBar.h"
 #include "../util/Log.h"
 
-void LedTask::start() {
-  leds_.begin();
+void LedTask::start(int count) {
+  leds_.begin(count);
+  count_ = leds_.count();
   settingsVersion_ = settings_.get(&current_);
   leds_.setBrightness(current_.brightness);
   stats_.begin(millis());
@@ -47,13 +48,13 @@ void LedTask::drawFrame(uint32_t nowMillis) {
 
   // Audio that has stopped arriving counts as none (the spectrum modes go dark).
   const bool audioFresh = haveAudio_ && nowMillis - lastAudioMillis_ < config::kAudioStaleMillis;
-  modes_.render(current_, audioFresh ? &audioFrame_ : nullptr, nowMillis, frame_, config::kNumLeds);
+  modes_.render(current_, audioFresh ? &audioFrame_ : nullptr, nowMillis, frame_, count_);
 
   // A firmware update in progress replaces the mode's picture, at a brightness
   // that shows even if the lights were off or dimmed.
   if (update_.version() != updateVersion_) updateVersion_ = update_.get(&updateProgress_);
   const bool showUpdate = update_bar::render(updateProgress_, nowMillis, config::kUpdateFailFlashMillis,
-                                             frame_, config::kNumLeds);
+                                             frame_, count_);
   if (showUpdate != showingUpdate_) {
     showingUpdate_ = showUpdate;
     leds_.setBrightness(showUpdate ? config::kUpdateBrightness : current_.brightness);
@@ -66,7 +67,7 @@ void LedTask::drawFrame(uint32_t nowMillis) {
   } else {
     heldFrames_ = 0;
   }
-  leds_.write(frame_, config::kNumLeds);
+  leds_.write(frame_, count_);
   leds_.show();
 
   stats_.recordFrame(leds_.lastShowMicros());

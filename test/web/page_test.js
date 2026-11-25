@@ -309,6 +309,64 @@ async function openPage(browser, phone, scheme = "light") {
       await page.click("#confirm-ok");
       await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Pairing is open"));
       assert.ok(await page.isVisible("#home-qr svg"));
+
+      // Paused by the crash-loop safety net: explained, and a way to turn it back on.
+      await fetch(`${BASE}/__home-paused`, { method: "POST" });
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Paused"),
+                                 null, { timeout: 4000 });
+      assert.ok(!(await page.isVisible("#home-pairing")) && !(await page.isVisible("#home-pair-btn")));
+      await page.screenshot({ path: path.join(OUT, `${phone}-home-paused.png`) });
+      await page.click("#home-resume-btn");
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Pairing is open"),
+                                 null, { timeout: 15000 });
+      assert.ok(!(await page.isVisible("#home-resume-btn")));
+      assert.ok(!(await page.isVisible("#offline")), "no offline banner for the expected restart");
+      await page.click("#back-btn");
+      await page.waitForSelector("#main-view:not([hidden])");
+    });
+
+    await check("strip setup: bass end at once; LED count checked, saved, restart followed", async () => {
+      await page.click("#settings-btn");
+      await page.waitForSelector("#settings-view:not([hidden])");
+      assert.strictEqual(await page.inputValue("#strip-leds"), "150");
+      assert.ok(await page.isDisabled("#strip-save"), "nothing to save yet");
+      const small = await page.evaluate(() => [...document.querySelectorAll("#settings-view button, #settings-view input")]
+        .filter((el) => el.offsetParent !== null && el.type !== "file")
+        .map((el) => [el.id || el.textContent, el.getBoundingClientRect().height]).filter(([, h]) => h < 40));
+      assert.deepStrictEqual(small, [], "settings tap targets");
+      const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth,
+                                                          document.documentElement.clientWidth]);
+      assert.ok(scroll <= client, `settings page is ${scroll}px wide on a ${client}px screen`);
+
+      // Bass end: applies at once, no restart.
+      const t0 = Date.now() / 1000;
+      await page.click('#bass-end [data-end="right"]');
+      await page.waitForFunction(() => document.querySelector('#bass-end [data-end="right"]').getAttribute("aria-checked") === "true");
+      const sent = (await requests(t0)).filter((r) => r.path === "/api/strip");
+      assert.deepStrictEqual(sent.map((r) => r.fields), [{ bassEnd: "right" }]);
+
+      // Over 150 is caught before sending.
+      await page.fill("#strip-leds", "151");
+      await page.waitForFunction(() => document.querySelector("#strip-msg").textContent.includes("1 to 150"));
+      assert.ok(await page.isDisabled("#strip-save"));
+
+      // 100 LEDs: confirm, restart, back with 100.
+      await page.fill("#strip-leds", "100");
+      assert.ok(!(await page.isDisabled("#strip-save")));
+      await page.click("#strip-save");
+      await page.waitForSelector("#confirm-dialog[open]");
+      assert.ok((await page.textContent("#confirm-text")).includes("100 LEDs"));
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#strip-msg").textContent.includes("Restarted with 100 LEDs"),
+                                 null, { timeout: 15000 });
+      assert.ok(!(await page.isVisible("#offline")), "no offline banner for the expected restart");
+      assert.ok((await page.textContent("#facts")).includes("KB free (lowest"), "memory shown");
+      await page.screenshot({ path: path.join(OUT, `${phone}-strip.png`), fullPage: true });
+
+      // Put it back for the other tests (and wait out the pretend restart).
+      await fetch(`${BASE}/api/strip`, { method: "POST", body: new URLSearchParams({ ledCount: 150, bassEnd: "left" }) });
+      await page.waitForTimeout(3500);
       await page.click("#back-btn");
       await page.waitForSelector("#main-view:not([hidden])");
     });

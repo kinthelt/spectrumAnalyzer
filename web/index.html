@@ -97,6 +97,11 @@ input[type=color] { width: 64px; height: 44px; padding: 0; border: 1px solid var
 .action .btn { align-self: flex-start; }
 .file-btn { position: relative; display: inline-flex; align-items: center; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr) 7.5em; align-items: center; gap: 12px; }
+input[type=number] { width: 100%; min-height: 44px; font: inherit; padding: 8px 10px; border-radius: 10px;
+                     border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.seg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.seg-row .seg { width: 10em; }
 .fw-progress { display: flex; flex-direction: column; gap: 6px; }
 .fw-progress progress { width: 100%; height: 12px; accent-color: var(--accent); }
 .fw-msg { margin: 0; font-size: 15px; }
@@ -191,6 +196,25 @@ footer.row { margin-top: 2px; }
     <dl class="facts" id="facts"></dl>
   </section>
 
+  <section class="card" aria-labelledby="h-strip">
+    <h2 id="h-strip">Strip setup</h2>
+    <div class="action">
+      <div class="seg-row">
+        <span>Bass end</span>
+        <div class="seg" role="radiogroup" aria-label="Bass end" id="bass-end">
+          <button data-end="left" role="radio" aria-checked="true">Left</button>
+          <button data-end="right" role="radio" aria-checked="false">Right</button>
+        </div>
+      </div>
+      <p>Mirrors everything, for a strip mounted the other way round. Applies at once.</p>
+      <label class="field" for="strip-leds">Number of LEDs<input type="number" id="strip-leds" inputmode="numeric" step="1"></label>
+      <p>For a strip cut to fit: each LED in use shows one frequency band, from 40 Hz at the bass
+         end to 15 kHz. Up to 150. Changing it restarts the lights.</p>
+      <p class="fw-msg" id="strip-msg" role="status" hidden></p>
+      <button class="btn" id="strip-save" disabled>Save and restart</button>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="h-home">
     <h2 id="h-home">Apple Home &amp; Google Home</h2>
     <div class="action">
@@ -204,6 +228,7 @@ footer.row { margin-top: 2px; }
       </div>
       <button class="btn" id="home-pair-btn" hidden>Allow pairing (15 minutes)</button>
       <button class="btn danger" id="home-unpair-btn" hidden>Remove from all smart homes…</button>
+      <button class="btn" id="home-resume-btn" hidden>Turn back on…</button>
     </div>
   </section>
 
@@ -238,7 +263,7 @@ footer.row { margin-top: 2px; }
     </div>
     <div class="action">
       <b>Reset settings</b>
-      <p>Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.</p>
+      <p>Mode, colours, brightness and all presets go back to the defaults. Wi-Fi and the strip setup are kept.</p>
       <button class="btn danger" id="reset-btn">Reset settings…</button>
     </div>
   </section>
@@ -299,7 +324,8 @@ footer.row { margin-top: 2px; }
 //   POST /api/preset/<action>        save | recall | rename | delete (slot, name)
 //   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
 //   POST /api/update                 a firmware file (multipart, field "firmware")
-//   POST /api/action/home-pair | home-unpair   Apple Home / Google Home pairing
+//   POST /api/action/home-pair | home-unpair | home-resume   Apple Home / Google Home
+//   POST /api/strip                  ledCount, bassEnd (left|right)
 // Every POST answers with the new state (or {"error": "..."}).
 // ---------------------------------------------------------------------------
 
@@ -449,13 +475,74 @@ function renderStatus(s) {
   fact(dl, "Microphone", !a.ok ? "Not working" : a.learningNoise ? "Learning room noise" : a.silent ? "Quiet" : "Hearing sound");
   fact(dl, "Audio load", a.loadPercent + "% of one core");
   fact(dl, "Running for", duration(st.uptime));
+  fact(dl, "Memory", `${Math.round(st.memory.free / 1024)} KB free (lowest ${Math.round(st.memory.lowest / 1024)} KB)`);
   fact(dl, "Firmware", st.version);
   const u = st.update, note = $("fw-note");
   note.textContent = u.onTrial ? "Just updated: the new firmware stays once it has been on Wi-Fi for 30 seconds." :
       u.lastUndone ? "The last update was undone: it didn't stay on Wi-Fi, so the previous firmware came back." : "";
   note.hidden = !note.textContent;
   renderSmartHome(st.smartHome);
+  renderStrip(s.strip);
 }
+
+// ---- Strip setup ------------------------------------------------------------------------------
+let stripEdited = false;     // the box holds the user's unsaved typing: don't overwrite it
+
+function renderStrip(strip) {
+  for (const b of $("bass-end").children) b.setAttribute("aria-checked", String(b.dataset.end === strip.bassEnd));
+  $("strip-leds").min = strip.minLeds;
+  $("strip-leds").max = strip.maxLeds;
+  if (!stripEdited) $("strip-leds").value = strip.ledCount;
+  stripCheck(strip);
+}
+
+function stripMessage(text, bad) {
+  const m = $("strip-msg");
+  m.textContent = text;
+  m.classList.toggle("bad", !!bad);
+  m.hidden = !text;
+}
+
+function stripCheck(strip) {
+  const n = Number($("strip-leds").value);
+  const changed = n !== strip.ledCount;
+  const problem = changed && (!Number.isInteger(n) || n < strip.minLeds || n > strip.maxLeds)
+    ? `The number of LEDs must be ${strip.minLeds} to ${strip.maxLeds}.` : "";
+  if (stripEdited) stripMessage(problem, true);
+  $("strip-save").disabled = !changed || !!problem || updating;
+}
+
+$("strip-leds").addEventListener("input", () => { stripEdited = true; if (state) stripCheck(state.strip); });
+
+$("bass-end").onclick = (e) => {
+  const end = e.target.closest("button")?.dataset.end;
+  if (end) call("/api/strip", { bassEnd: end });
+};
+
+$("strip-save").onclick = () => {
+  const v = { ledCount: Number($("strip-leds").value) };
+  confirmThen("Restart with this setup?",
+    `${v.ledCount} LEDs. The lights restart to use it and are back in a few seconds.`,
+    "Save and restart", async () => {
+      const before = state ? state.status : null;
+      const sentAt = Date.now();
+      const d = await call("/api/strip", v);
+      if (!d) return;
+      stripEdited = false;
+      updating = true;   // pause normal polling while the lights restart
+      $("strip-save").disabled = true;
+      stripMessage("Saved. The lights are restarting…");
+      const s = await waitForRestart(before, sentAt);
+      updating = false;
+      if (!s) {
+        stripMessage("The lights haven't come back yet. Try reloading this page in a minute.", true);
+        return;
+      }
+      setOnline(true);
+      render(s);
+      stripMessage(`Restarted with ${s.strip.runningLedCount} LEDs.`);
+    });
+};
 
 // ---- Apple Home / Google Home ---------------------------------------------------------------
 let homeQrShown = "";
@@ -466,6 +553,14 @@ function listWords(items) {
 
 function renderSmartHome(h) {
   const paired = h.homes.length > 0;
+  $("home-resume-btn").hidden = !h.paused;
+  $("home-state").classList.toggle("bad", !!h.paused);
+  if (h.paused) {
+    $("home-state").textContent = "Paused: the lights crashed twice in a row just after starting Apple Home " +
+      "and Google Home, so they've been left off. Everything else works.";
+    $("home-pairing").hidden = $("home-pair-btn").hidden = $("home-unpair-btn").hidden = true;
+    return;
+  }
   $("home-state").textContent = !h.started ? "This starts once the lights are on Wi-Fi."
     : h.pairingOpen ? (paired ? `Paired with ${listWords(h.homes)}. Pairing is open for another app.`
                               : "Pairing is open: add the lights in a Home app now.")
@@ -487,6 +582,18 @@ function renderSmartHome(h) {
 
 $("home-pair-btn").onclick = () =>
   call("/api/action/home-pair", {}).then((d) => d && toast("Pairing is open for 15 minutes"));
+$("home-resume-btn").onclick = () => confirmThen("Turn Apple Home and Google Home back on?",
+  "The lights restart to start them again. If they crash twice more, they'll be paused again.",
+  "Restart", async () => {
+    const before = state ? state.status : null;
+    const sentAt = Date.now();
+    if (!(await call("/api/action/home-resume", {}))) return;
+    updating = true;
+    $("home-state").textContent = "Restarting…";
+    const s = await waitForRestart(before, sentAt);
+    updating = false;
+    if (s) { setOnline(true); render(s); }
+  });
 $("home-unpair-btn").onclick = () => confirmThen("Remove from all smart homes?",
   "Apple Home and Google Home lose the lights (delete them in those apps too). Wi-Fi, settings and " +
   "presets stay, and the lights can be paired again afterwards.",
@@ -578,7 +685,7 @@ $("forget-btn").onclick = () => confirmThen("Forget Wi-Fi?",
   "The lights leave this network and open “Spectrum-Setup”. Join that network on a phone to enter new Wi-Fi details. This page will stop working.",
   "Forget Wi-Fi", () => call("/api/action/forget-wifi", {}).then((d) => d && toast("Forgetting Wi-Fi…")));
 $("reset-btn").onclick = () => confirmThen("Reset settings?",
-  "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.",
+  "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi and the strip setup are kept.",
   "Reset", () => call("/api/action/reset-settings", {}).then((d) => d && toast("Settings reset")));
 
 // ---- Firmware update -----------------------------------------------------------------------
@@ -646,7 +753,7 @@ function uploadFirmware(file) {
     if (xhr.status === 200) {
       fwProgress(100);
       fwMessage("Installed. The lights are restarting…");
-      waitForRestart(before, sentAt);
+      waitForUpdate(before, sentAt);
     } else {
       fwDone();
       fwProgress(null);
@@ -664,6 +771,7 @@ function uploadFirmware(file) {
 }
 
 // Polls until the lights answer again after restarting (their uptime starts over).
+// Returns their new state, or null if they haven't come back within two minutes.
 async function waitForRestart(before, sentAt) {
   const deadline = Date.now() + 120000;
   let sawDown = false;
@@ -679,19 +787,25 @@ async function waitForRestart(before, sentAt) {
     }
     const elapsed = (Date.now() - sentAt) / 1000;
     const restarted = sawDown || !before || s.status.uptime < before.uptime + elapsed - 5;
-    if (!restarted) continue;
-    fwDone();
-    setOnline(true);
-    render(s);
-    fwProgress(null);
-    fwMessage(before && s.status.version === before.version
-      ? `The lights restarted, still on version ${s.status.version}.`
-      : `Updated to version ${s.status.version}.`);
+    if (restarted) return s;
+  }
+  return null;
+}
+
+async function waitForUpdate(before, sentAt) {
+  const s = await waitForRestart(before, sentAt);
+  fwDone();
+  if (!s) {
+    fwMessage("The lights haven't come back yet. If they don't within a few minutes, the previous " +
+              "firmware returns by itself.", true);
     return;
   }
-  fwDone();
-  fwMessage("The lights haven't come back yet. If they don't within a few minutes, the previous " +
-            "firmware returns by itself.", true);
+  setOnline(true);
+  render(s);
+  fwProgress(null);
+  fwMessage(before && s.status.version === before.version
+    ? `The lights restarted, still on version ${s.status.version}.`
+    : `Updated to version ${s.status.version}.`);
 }
 
 function fwDone() {

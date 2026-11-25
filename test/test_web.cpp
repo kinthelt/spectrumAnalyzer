@@ -104,6 +104,7 @@ TEST(web_state_json_smart_home_codes_only_while_pairing_is_open) {
   std::string json = web_api::stateJson(settings, st);
   CHECK(json.find("\"homes\":[\"Apple Home\",\"Google Home\"]") != std::string::npos);
   CHECK(json.find("34970112332") == std::string::npos);   // closed: no codes
+  CHECK(json.find("\"paused\":false") != std::string::npos);
   CHECK(json.find("MT:") == std::string::npos);
   st.homePairingOpen = true;
   json = web_api::stateJson(settings, st);

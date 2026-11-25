@@ -24,9 +24,12 @@ class LedTask {
           const Shared<UpdateProgress>& update)
       : audio_(audio), settings_(settings), update_(update) {}
 
-  // Sets up FastLED and starts the task. Call once from setup(), after the
-  // first settings snapshot has been published.
-  void start();
+  // Sets up FastLED for count LEDs and starts the task. Call once from setup(),
+  // after the first settings snapshot has been published.
+  void start(int count);
+
+  // Bass end on the right: mirrors the whole picture. Safe from any task.
+  void setMirrored(bool mirrored) { leds_.setMirrored(mirrored); }
 
  private:
   static void entry(void* self);
@@ -50,5 +53,6 @@ class LedTask {
   AudioFrame audioFrame_;
   bool haveAudio_ = false;
   uint32_t lastAudioMillis_ = 0;
-  Rgb frame_[config::kNumLeds];
+  Rgb frame_[config::kMaxLedCount];
+  int count_ = config::kMaxLedCount;   // LEDs in use
 };

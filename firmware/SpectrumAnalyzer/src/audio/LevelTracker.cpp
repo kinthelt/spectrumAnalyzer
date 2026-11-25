@@ -21,8 +21,9 @@ float LevelTracker::gateDb(int band) const {
   return floorDb_[band] + (margin > config::kNoiseMarginMinDb ? margin : config::kNoiseMarginMinDb);
 }
 
-void LevelTracker::begin(const float* centreHz) {
-  for (int i = 0; i < kBands; ++i) {
+void LevelTracker::begin(int bands, const float* centreHz) {
+  bands_ = bands < 1 ? 1 : (bands > kMaxBands ? kMaxBands : bands);
+  for (int i = 0; i < bands_; ++i) {
     tiltDb_[i] = config::kTrebleTiltDbPerOctave * std::log2(centreHz[i] / 1000.0f);
     floorDb_[i] = -120.0f;
     // Start by assuming noisy bands (5 dB spread, a ~15 dB gate) so nothing
@@ -46,7 +47,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   if (warmupSeconds_ < config::kWarmupSeconds) {
     warmupSeconds_ += dt;
     float total = 0;
-    for (int i = 0; i < kBands; ++i) {
+    for (int i = 0; i < bands_; ++i) {
       total += bandPower[i];
       const float db = toDb(bandPower[i]) + tiltDb_[i];
       floorDb_[i] += (db - floorDb_[i]) * approach(dt, 0.1f);
@@ -67,7 +68,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
 
   // 1. Overall level, and whether this is a quiet moment.
   float total = 0;
-  for (int i = 0; i < kBands; ++i) total += bandPower[i];
+  for (int i = 0; i < bands_; ++i) total += bandPower[i];
   const float broadbandDb = toDb(total);
 
   // How steady is the overall level? Compare a fast and a slow average.
@@ -93,9 +94,9 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   if (learnSecondsLeft_ > 0) learnSecondsLeft_ -= dt;
 
   // 2. Per-band level in dB with treble tilt; noise floors; loudest band.
-  float bandDb[kBands];
+  float bandDb[kMaxBands];
   float loudestDb = -1000.0f;
-  for (int i = 0; i < kBands; ++i) {
+  for (int i = 0; i < bands_; ++i) {
     const float db = toDb(bandPower[i]) + tiltDb_[i];
     bandDb[i] = db;
     if (db > loudestDb) loudestDb = db;
@@ -139,7 +140,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   //    noise gate (or kDisplayRangeDb below the top, if higher) to the top, and
   //    is never narrower than kMinSpanDb, so noise alone can't fill it.
   uint16_t active = 0;
-  for (int i = 0; i < kBands; ++i) {
+  for (int i = 0; i < bands_; ++i) {
     const float gate = gateDb(i);
     const float windowBottom = agcRefDb_ - config::kDisplayRangeDb;
     const float lo = gate > windowBottom ? gate : windowBottom;

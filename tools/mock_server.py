@@ -8,7 +8,8 @@ Wi-Fi). It serves the page exactly as the firmware does (built by tools/embed_we
 with the QR library inline) and answers the same API as src/web/WebApi.cpp, keeping
 state in memory. Edits to web/ show up on reload. POST /api/update applies the same
 checks as the firmware to an uploaded file, then pretends to restart (no answers for 3 s).
-Apple/Google Home pairing is simulated; POST /__pair (field app) pretends an app paired. GET /__requests lists the requests received (used by the
+Apple/Google Home pairing is simulated; POST /__pair (field app) pretends an app paired.
+The strip setup (LEDs in use, bass end) follows the firmware's rules. GET /__requests lists the requests received (used by the
 browser tests).
 """
 import argparse
@@ -60,7 +61,11 @@ class Lights:
         self.down_until = 0
         self.uploads = 0
         self.homes = []
+        # Kept by "Reset settings" (which re-runs __init__), as in the firmware.
+        self.strip = getattr(self, "strip", None) or dict(ledCount=150, bassEnd="left")
+        self.running_leds = getattr(self, "running_leds", 150)
         self.pairing_until = time.time() + 900   # unpaired at start: pairing open
+        self.home_paused = False
         self.requests = []
 
     def state(self):
@@ -72,12 +77,14 @@ class Lights:
             presets.append(p)
         return {
             "revision": self.revision, **self.s, "modes": MODES, "presets": presets,
+            "strip": {**self.strip, "runningLedCount": self.running_leds, "minLeds": 1, "maxLeds": 150},
             "status": {
                 "version": self.version, "uptime": int(time.time() - self.started),
                 "wifi": {"connected": True, "ssid": "Home Wi-Fi", "rssi": -58, "ip": "192.168.3.234",
                          "url": "http://192.168.3.234/", "localUrl": "http://spectrum.local/"},
                 "audio": {"ok": True, "silent": False, "learningNoise": time.time() < self.learning_until,
-                          "loadPercent": 43},
+                          "loadPercent": round(43 * self.running_leds / 150)},
+                "memory": {"free": 76000, "lowest": 70000},
                 "update": {"maxBytes": UPDATE_MAX_BYTES, "onTrial": False, "lastUndone": False},
                 "smartHome": self.smart_home(),
             },
@@ -158,13 +165,39 @@ class Lights:
         self.started = self.down_until
         return ""
 
+    def apply_strip(self, f):
+        """Same rules as web_api::applyStrip / StripSetup::validate (firmware)."""
+        nxt = dict(self.strip)
+        if "ledCount" in f:
+            if not re.fullmatch(r"\d{1,4}", f["ledCount"]) or not 1 <= int(f["ledCount"]) <= 150:
+                return "The number of LEDs must be 1 to 150."
+            nxt["ledCount"] = int(f["ledCount"])
+        if "bassEnd" in f:
+            if f["bassEnd"] not in ("left", "right"):
+                return "'bassEnd' must be left or right"
+            nxt["bassEnd"] = f["bassEnd"]
+        restart = nxt["ledCount"] != self.running_leds
+        self.strip = nxt
+        self.revision += 1
+        if restart:   # "restart": silent for 3 s, then running the new length
+            self.running_leds = nxt["ledCount"]
+            self.down_until = time.time() + 3
+            self.started = self.down_until
+        return ""
+
     def smart_home(self):
         open_ = time.time() < self.pairing_until
-        return {"started": True, "homes": list(self.homes), "pairingOpen": open_,
+        if self.home_paused:
+            return {"started": False, "paused": True, "homes": [], "pairingOpen": False, "code": "", "qr": ""}
+        return {"started": True, "paused": False, "homes": list(self.homes), "pairingOpen": open_,
                 "code": "34970112332" if open_ else "", "qr": "MT:Y.K9042C00KA0648G00" if open_ else ""}
 
     def action(self, name):
-        if name == "home-pair":
+        if name == "home-resume":   # "restart": silent for 3 s, Home back on
+            self.home_paused = False
+            self.down_until = time.time() + 3
+            self.started = self.down_until
+        elif name == "home-pair":
             self.pairing_until = time.time() + 900
         elif name == "home-unpair":
             self.homes = []
@@ -251,13 +284,19 @@ class Handler(BaseHTTPRequestHandler):
                                                keep_blank_values=True).items()}
         with LIGHTS.lock:
             LIGHTS.requests.append({"method": "POST", "path": path, "fields": fields, "t": time.time()})
-            if path == "/__pair":   # test hook: an app paired, which closes pairing
+            if path == "/__home-paused":   # test hook: the crash guard paused Home
+                LIGHTS.home_paused = True
+                LIGHTS.revision += 1
+                err = ""
+            elif path == "/__pair":   # test hook: an app paired, which closes pairing
                 LIGHTS.homes.append(fields.get("app", "Apple Home"))
                 LIGHTS.pairing_until = 0
                 LIGHTS.revision += 1
                 err = ""
             elif path == "/api/state":
                 err = LIGHTS.apply_state(fields)
+            elif path == "/api/strip":
+                err = LIGHTS.apply_strip(fields)
             elif path.startswith("/api/preset/"):
                 err = LIGHTS.preset(path.rsplit("/", 1)[1], fields)
             elif path.startswith("/api/action/"):

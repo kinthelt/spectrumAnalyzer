@@ -1,10 +1,25 @@
 #include "Connectivity.h"
 
 #include <WiFi.h>
+#include <esp_wifi.h>
+
+#include <cstring>
 
 #include "../config/Config.h"
 #include "../util/Log.h"
 #include "StationIp.h"
+
+namespace {
+// The saved network's name, read from the Wi-Fi driver's stored settings.
+// (WiFi.SSID() is empty until a connection has been made: it read '' on the bench.)
+String savedSsid() {
+  wifi_config_t conf = {};
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK) return String();
+  char ssid[sizeof(conf.sta.ssid) + 1] = {};
+  memcpy(ssid, conf.sta.ssid, sizeof(conf.sta.ssid));
+  return String(ssid);
+}
+}  // namespace
 
 void Connectivity::begin(bool forceSetup) {
   WiFi.setHostname(config::kHostname);   // name shown in the router's device list
@@ -30,7 +45,7 @@ void Connectivity::apply(WifiStateMachine::Action action) {
     case WifiStateMachine::Action::None:
       break;
     case WifiStateMachine::Action::Connect:
-      LOG_INFO("wifi", "connecting to saved network '%s'", WiFi.SSID().c_str());
+      LOG_INFO("wifi", "connecting to saved network '%s'", savedSsid().c_str());
       WiFi.begin();   // the saved network
       break;
     case WifiStateMachine::Action::StartPortal:

@@ -104,12 +104,12 @@ TEST(power_cycles_three_quick_boots_trigger_setup) {
   FakeSettingsStore store;
   for (int boot = 1; boot < config::kPowerCyclesForSetup; ++boot) {
     PowerCycleCounter c(store);
-    CHECK(!c.begin());   // switched off again before the window passes
+    CHECK(!c.begin(true));   // switched off again before the window passes
   }
   PowerCycleCounter third(store);
-  CHECK(third.begin());
+  CHECK(third.begin(true));
   PowerCycleCounter after(store);   // count starts over afterwards
-  CHECK(!after.begin());
+  CHECK(!after.begin(true));
   CHECK_EQ(after.count(), 1);
 }
 
@@ -117,15 +117,15 @@ TEST(power_cycles_staying_on_clears_the_count) {
   FakeSettingsStore store;
   {
     PowerCycleCounter quick(store);
-    CHECK(!quick.begin());   // one quick boot...
+    CHECK(!quick.begin(true));   // one quick boot...
   }
   PowerCycleCounter c(store);
-  CHECK(!c.begin());         // ...then a second boot that stays on
+  CHECK(!c.begin(true));         // ...then a second boot that stays on
   CHECK_EQ(c.count(), 2);
   c.tick(config::kPowerCycleWindowMillis - 1);
   c.tick(config::kPowerCycleWindowMillis);   // stayed on: cleared
   PowerCycleCounter next(store);
-  CHECK(!next.begin());
+  CHECK(!next.begin(true));
   CHECK_EQ(next.count(), 1);
 }
 
@@ -133,7 +133,22 @@ TEST(power_cycles_normal_use_never_triggers) {
   FakeSettingsStore store;
   for (int day = 0; day < 30; ++day) {
     PowerCycleCounter c(store);
-    CHECK(!c.begin());
+    CHECK(!c.begin(true));
     for (uint32_t t = 0; t <= 60000; t += 1000) c.tick(t);
   }
+}
+
+TEST(power_cycle_only_power_ups_count) {
+  // Bench: two quick crash restarts were taken for the plug trick. Restarts that
+  // aren't the power coming on must neither count nor leave a count behind.
+  FakeSettingsStore store;
+  PowerCycleCounter first(store);
+  CHECK(!first.begin(true));          // one quick power-up...
+  for (int i = 0; i < 5; ++i) {
+    PowerCycleCounter restart(store);
+    CHECK(!restart.begin(false));     // ...then crashes / updates / software restarts
+  }
+  PowerCycleCounter second(store);
+  CHECK(!second.begin(true));
+  CHECK_EQ(second.count(), 1);        // the earlier power-up was cleared by the restarts
 }

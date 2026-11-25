@@ -6,12 +6,17 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.9.0";
+constexpr const char* kFirmwareVersion = "0.10.1";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
 constexpr int kLedDataPin = 7;    // -> SN74AHCT126N pin 2 (1A); pin 3 (1Y) -> 330R -> strip DIN
-constexpr int kNumLeds = 150;
+// The number of LEDs in use is a setting (Settings > Strip setup), 1 to kMaxLedCount,
+// for a strip cut to fit. Every per-LED array is this size, so memory use is the
+// same whatever the setting. 150 is the 5 m strip: with Matter running, internal
+// RAM is too tight for more (it ran out in step 10 trials of longer strips).
+constexpr int kMaxLedCount = 150;
+constexpr int kMinLedCount = 1;
 
 // ---- Microphone: ICS-43434 over I2S ------------------------------------------
 constexpr int kMicBclkPin = 4;
@@ -117,6 +122,10 @@ constexpr bool kTestUpdateNeverConfirms = false;
 constexpr const char* kSmartHomeName = "Spectrum Lights";  // the name the Home apps first show
 constexpr uint32_t kPairingWindowSeconds = 15u * 60;       // "Allow pairing" keeps it open this long
 constexpr uint32_t kHomeSendIntervalMillis = 200;          // changes go to Home at most 5 times a second
+// Crash-loop safety net (smarthome/CrashGuard.h): this many crashes in a row within
+// kMatterStableMillis of Matter starting, and Matter is paused until asked again.
+constexpr int kMatterCrashesToPause = 2;
+constexpr uint32_t kMatterStableMillis = 60u * 1000;
 
 // ---- LED task -----------------------------------------------------------------
 // Core 1, above the Arduino loop (priority 1), so network work never delays frames.
@@ -131,10 +140,10 @@ constexpr uint32_t kAudioTaskStackBytes = 8192;
 
 // ---- Power -------------------------------------------------------------------
 // FastLED scales brightness down whenever a frame would draw more than this.
-// Bench (thin jumper wires): 2000 mA. After install with 14 AWG feeds at both
-// ends: raise to 5000 mA (the Mean Well GST60A05 supplies 6 A).
+// Installed with 14 AWG feeds at both ends: 5000 mA, leaving 1 A of the Mean Well
+// GST60A05's 6 A for the board. (It was 2000 mA on the bench's thin jumper wires.)
 constexpr uint8_t kSupplyVolts = 5;
-constexpr uint32_t kPowerLimitMilliamps = 2000;
+constexpr uint32_t kPowerLimitMilliamps = 5000;
 
 // ---- Output ------------------------------------------------------------------
 constexpr uint8_t kDefaultBrightness = 64;   // 0-255, global brightness

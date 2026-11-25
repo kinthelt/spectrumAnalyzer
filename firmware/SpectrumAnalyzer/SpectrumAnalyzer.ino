@@ -28,6 +28,7 @@
 #include "src/net/StationIp.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
+#include "src/settings/StripSetupManager.h"
 #include "src/smarthome/MatterBridge.h"
 #include "src/update/FirmwareUpdate.h"
 #include "src/util/Log.h"
@@ -44,6 +45,7 @@
 
 static NvsSettingsStore store;
 static SettingsManager settings(store);
+static StripSetupManager strip(store);
 static Shared<LightSettings> sharedSettings;
 static uint32_t publishedRevision = 0;
 static AudioInput audio;
@@ -65,12 +67,22 @@ static void publishSettings() {
 
 // Facts for the web page's status panel.
 static DeviceStatus deviceStatus();
-static WebUi webUi(settings, firmwareUpdate, WebUi::Hooks{
+static void restartNow() {
+  settings.flush();
+  LOG_INFO("boot", "restarting");
+  delay(100);   // let the log line out
+  ESP.restart();
+}
+
+static WebUi webUi(settings, strip, firmwareUpdate, WebUi::Hooks{
                                  deviceStatus,
                                  [] { audio.requestNoiseLearning(); },
                                  [] { connectivity.forgetWifi(); },
                                  [] { return smartHome.openPairing(); },
                                  [] { return smartHome.removeAllHomes(); },
+                                 [] { smartHome.resume(); },
+                                 [] { ledTask.setMirrored(strip.running().bassOnRight); },
+                                 restartNow,
                              });
 static bool audioStarted = false;
 
@@ -85,10 +97,16 @@ static DeviceStatus deviceStatus() {
 
   const SmartHomeStatus& home = smartHome.status();
   st.homeStarted = home.started;
+  st.homePaused = home.paused;
   st.homeApps = home.homes;
   st.homePairingOpen = home.pairingOpen;
   st.homeManualCode = home.manualCode;
   st.homeQrPayload = home.qrPayload;
+
+  st.stripChosen = strip.chosen();
+  st.stripRunning = strip.running();
+  st.heapFree = ESP.getFreeHeap();
+  st.heapLowest = ESP.getMinFreeHeap();
 
   uint32_t ip = 0;
   if (connectivity.connected() && stationIp(&ip)) {
@@ -123,16 +141,23 @@ void setup() {
   delay(500);   // give the USB serial port a moment so the first lines aren't lost
 
   logBootInfo();
+  logMemory("start");
   store.begin();
   settings.begin();
   publishSettings();
   firmwareUpdate.begin(millis());
   firmwareUpdate.setBeforeRestart([] { settings.flush(); });
   firmwareUpdate.setPauseHook([](bool paused) { audio.setPaused(paused); });
-  audioStarted = audio.begin();
-  ledTask.start();
+  smartHome.begin(resetWasCrash());
 
-  const bool forceSetup = powerCycles.begin();
+  strip.begin();
+  const StripSetup& setup = strip.running();
+  audioStarted = audio.begin(setup.ledCount);
+  ledTask.setMirrored(setup.bassOnRight);
+  ledTask.start(setup.ledCount);
+  logMemory("LEDs and audio started");
+
+  const bool forceSetup = powerCycles.begin(resetWasPowerUp());
   connectivity.setWebService(&webUi);
   connectivity.begin(forceSetup);
 
@@ -156,7 +181,7 @@ void loop() {
   if (audioMonitor.enabled() && audio.snapshot(&audioNow) &&
       audioNow.sequence != monitoredSequence) {
     monitoredSequence = audioNow.sequence;
-    audioMonitor.onFrame(audioNow, millis());
+    audioMonitor.onFrame(audioNow, audio.bandCount(), millis());
   }
 
   delay(1);   // let lower-priority tasks run; nothing here needs sub-millisecond timing

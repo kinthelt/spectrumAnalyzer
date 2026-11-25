@@ -2,8 +2,8 @@
 //
 //   -52.3 dBFS  ref  -61.0  quiet -77.4  lit  37       |  .:-=+*#%@%#*=-:.    ...  |
 //
-// 50 characters, each the loudest of 3 neighbouring LEDs (bass on the left),
-// from ' ' (off) to '@' (full). Printed 5 times a second.
+// Up to 50 characters, each the loudest of its share of the LEDs (bass on the
+// left, as the strip is wired), from ' ' (off) to '@' (full). Printed 5 times a second.
 #pragma once
 
 #include <cstdint>
@@ -15,8 +15,8 @@ class AudioMonitor {
   void setEnabled(bool on) { enabled_ = on; }
   bool enabled() const { return enabled_; }
 
-  // Call with every new frame.
-  void onFrame(const AudioFrame& frame, uint32_t nowMillis);
+  // Call with every new frame. count: LEDs (bands) in use.
+  void onFrame(const AudioFrame& frame, int count, uint32_t nowMillis);
 
  private:
   bool enabled_ = false;

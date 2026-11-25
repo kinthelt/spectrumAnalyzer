@@ -21,9 +21,10 @@
 
 class AudioInput {
  public:
-  // Sets up I2S and the analysis, and starts the task. Returns false on failure
-  // (the rest of the firmware keeps running without audio).
-  bool begin();
+  // Sets up I2S and the analysis (one band per LED in use), and starts the task.
+  // Returns false on failure (the rest of the firmware keeps running without audio).
+  bool begin(int ledCount);
+  int bandCount() const { return bank_.bandCount(); }
 
   // For the LED task only: copies the newest frame into out if one has arrived
   // since the last call. Never blocks.

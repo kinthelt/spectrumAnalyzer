@@ -23,7 +23,7 @@ class SpectrumMode : public LightMode {
   float displayLevel(int i) const { return display_[i]; }
 
  private:
-  static constexpr int kMaxLeds = config::kNumLeds;
+  static constexpr int kMaxLeds = config::kMaxLedCount;
 
   void updateSnappy(int i, float level, float dt);
   void updateSmooth(int i, float level, float dt);

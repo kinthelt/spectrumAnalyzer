@@ -19,10 +19,12 @@
 
 class LevelTracker {
  public:
-  static constexpr int kBands = config::kNumLeds;
+  static constexpr int kMaxBands = config::kMaxLedCount;
 
-  // centreHz: each band's centre frequency (for the treble tilt).
-  void begin(const float* centreHz);
+  // bands: how many (one per LED, 1 to kMaxBands); centreHz: each band's centre
+  // frequency (for the treble tilt).
+  void begin(int bands, const float* centreHz);
+  int bandCount() const { return bands_; }
 
   // bandPower: mean-square power per band. dtSeconds: time since the last call.
   // Fills everything in out except sequence and dspMicros.
@@ -36,10 +38,11 @@ class LevelTracker {
   float gateDb(int band) const;   // floor plus the band's noise margin
 
  private:
-  float tiltDb_[kBands] = {};
-  float floorDb_[kBands] = {};
-  float noiseVarDb2_[kBands] = {};
-  float smoothDb_[kBands] = {};      // band level averaged over ~1 s   // variance of the band's level around its floor, dB^2
+  int bands_ = 0;
+  float tiltDb_[kMaxBands] = {};
+  float floorDb_[kMaxBands] = {};
+  float noiseVarDb2_[kMaxBands] = {};
+  float smoothDb_[kMaxBands] = {};      // band level averaged over ~1 s   // variance of the band's level around its floor, dB^2
   float broadFastDb_ = -120, broadSlowDb_ = -120, broadDeviationDb_ = 0;
   float quietRefDb_ = config::kQuietCeilingDb;
   float agcRefDb_ = -120;

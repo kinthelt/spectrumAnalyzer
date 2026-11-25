@@ -31,15 +31,15 @@ bool AudioInput::setupI2s() {
   return i2s_channel_enable(rx_) == ESP_OK;
 }
 
-bool AudioInput::begin() {
-  if (!bank_.begin(config::kSampleRate, config::kBandLowHz, config::kBandHighHz,
+bool AudioInput::begin(int ledCount) {
+  if (!bank_.begin(ledCount, config::kSampleRate, config::kBandLowHz, config::kBandHighHz,
                    config::kBandQScale, config::kMinBandwidthHz)) {
     LOG_ERROR("audio", "filter bank settings need more decimation stages than the block allows");
     return false;
   }
-  float centres[FilterBank::kBands];
-  for (int i = 0; i < FilterBank::kBands; ++i) centres[i] = bank_.centreHz(i);
-  tracker_.begin(centres);
+  float centres[FilterBank::kMaxBands];
+  for (int i = 0; i < bank_.bandCount(); ++i) centres[i] = bank_.centreHz(i);
+  tracker_.begin(bank_.bandCount(), centres);
 
   queue_ = xQueueCreate(1, sizeof(AudioFrame));
   if (queue_ == nullptr) {
@@ -58,7 +58,7 @@ bool AudioInput::begin() {
   }
 
   LOG_INFO("audio", "%d bands %.0f-%.0f Hz, %d stages, %.2fM band-samples/s, mic on GPIO %d/%d/%d",
-           FilterBank::kBands, bank_.centreHz(0), bank_.centreHz(FilterBank::kBands - 1),
+           bank_.bandCount(), bank_.centreHz(0), bank_.centreHz(bank_.bandCount() - 1),
            bank_.stageCount(), bank_.bandSamplesPerSecond() / 1e6, config::kMicBclkPin,
            config::kMicWsPin, config::kMicDataPin);
   return true;
@@ -89,8 +89,8 @@ void AudioInput::run() {
     for (int i = 0; i < config::kAudioBlockSize; ++i) samples_[i] = raw_[i] * kScale;
     bank_.process(samples_);
 
-    float power[FilterBank::kBands];
-    for (int i = 0; i < FilterBank::kBands; ++i) power[i] = bank_.power(i);
+    float power[FilterBank::kMaxBands];
+    for (int i = 0; i < bank_.bandCount(); ++i) power[i] = bank_.power(i);
     if (learnRequested_.exchange(false)) tracker_.learnNoise();
     tracker_.update(power, kBlockSeconds, &frame_);
 

@@ -10,7 +10,7 @@
 
 namespace {
 
-constexpr int kN = config::kNumLeds;
+constexpr int kN = config::kMaxLedCount;
 
 LightSettings settingsWith(Mode mode) {
   LightSettings s;

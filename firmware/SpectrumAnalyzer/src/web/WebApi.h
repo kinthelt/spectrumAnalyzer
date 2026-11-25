@@ -5,6 +5,7 @@
 //   GET  /api/state            -> stateJson()
 //   POST /api/state            on, mode, brightness, colourA, colourB, spectrumColour
 //   POST /api/preset/<action>  save (slot, name?), recall (slot), rename (slot, name), delete (slot)
+//   POST /api/strip            ledCount, bassEnd (left|right)
 //   (POST /api/action/<name> and POST /api/update are handled in WebUi.)
 //
 // POST bodies are form fields (application/x-www-form-urlencoded). Changes are
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "../settings/SettingsManager.h"
+#include "../settings/StripSetupManager.h"
 
 // Request fields, looked up by name. nullptr if absent.
 class FormArgs {
@@ -42,10 +44,17 @@ struct DeviceStatus {
   bool updateLastUndone = false;  // the last update was undone (previous firmware came back)
   // Apple Home / Google Home (Matter)
   bool homeStarted = false;              // Matter runs once the lights are on Wi-Fi
+  bool homePaused = false;               // skipped after crashing the lights (CrashGuard)
   std::vector<std::string> homeApps;     // apps it is paired with
   bool homePairingOpen = false;
   std::string homeManualCode;            // only sent to the page while pairing is open
   std::string homeQrPayload;             // "MT:...", likewise
+  // Strip setup (Settings > Strip setup)
+  StripSetup stripChosen;                // as set on the page
+  StripSetup stripRunning;               // what the lights are using
+  // Memory: internal RAM free now, and the lowest it has been since start-up.
+  uint32_t heapFree = 0;
+  uint32_t heapLowest = 0;
 };
 
 namespace web_api {
@@ -56,6 +65,10 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
 std::string applyState(const FormArgs& args, SettingsManager& settings, uint32_t nowMillis);
 std::string presetAction(const char* action, const FormArgs& args, SettingsManager& settings,
                          uint32_t nowMillis);
+
+// Changes the strip setup (fields present only; all or nothing). needsRestart:
+// the lights must restart to use it (the LED count changed).
+std::string applyStrip(const FormArgs& args, StripSetupManager& strip, bool* needsRestart);
 
 std::string errorJson(const std::string& message);
 

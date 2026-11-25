@@ -6,12 +6,18 @@
 
 #include <cmath>
 
-bool FilterBank::begin(float sampleRate, float lowHz, float highHz, float qScale,
+bool FilterBank::begin(int bands, float sampleRate, float lowHz, float highHz, float qScale,
                        float minBandwidthHz) {
+  if (bands < 1 || bands > kMaxBands) return false;
   fs_ = sampleRate;
-  const float ratio = std::pow(highHz / lowHz, 1.0f / static_cast<float>(kBands - 1));
+  bands_ = bands;
+  // Neighbouring bands are ratio apart. One band sits at the range's (geometric)
+  // middle and is as wide as the whole range.
+  const float ratio = bands > 1 ? std::pow(highHz / lowHz, 1.0f / static_cast<float>(bands - 1)) : 1.0f;
+  const float firstHz = bands > 1 ? lowHz : std::sqrt(lowHz * highHz);
   // Q at which neighbouring bands meet at their -3 dB points.
-  const float qTile = 1.0f / (std::sqrt(ratio) - 1.0f / std::sqrt(ratio));
+  const float qTile = bands > 1 ? 1.0f / (std::sqrt(ratio) - 1.0f / std::sqrt(ratio))
+                                : firstHz / (highHz - lowHz);
   // Each band is two identical biquads in series (4th order) for steeper skirts.
   // Two in series reach -3 dB where each is -1.5 dB, so each stage's Q is scaled
   // by sqrt(sqrt(2) - 1) to keep the overall bandwidth.
@@ -20,8 +26,8 @@ bool FilterBank::begin(float sampleRate, float lowHz, float highHz, float qScale
   numStages_ = 1;
   for (int k = 0; k < kMaxStages; ++k) stageBandCount_[k] = 0;
 
-  for (int i = 0; i < kBands; ++i) {
-    const float f = lowHz * std::pow(ratio, static_cast<float>(i));
+  for (int i = 0; i < bands_; ++i) {
+    const float f = firstHz * std::pow(ratio, static_cast<float>(i));
     centreHz_[i] = f;
 
     // Deepest stage k whose rate Fs/2^k still has f <= (Fs/2^k)/8.
@@ -98,6 +104,6 @@ void FilterBank::process(const float* in) {
 
 double FilterBank::bandSamplesPerSecond() const {
   double total = 0;
-  for (int i = 0; i < kBands; ++i) total += fs_ / static_cast<double>(1 << stageOf_[i]);
+  for (int i = 0; i < bands_; ++i) total += fs_ / static_cast<double>(1 << stageOf_[i]);
   return total;
 }

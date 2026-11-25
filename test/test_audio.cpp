@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr int kBands = FilterBank::kBands;
+constexpr int kBands = FilterBank::kMaxBands;
 constexpr int kBlock = FilterBank::kBlock;
 constexpr float kFs = config::kSampleRate;
 constexpr float kBlockSeconds = static_cast<float>(kBlock) / kFs;
@@ -20,7 +20,7 @@ double db(double power) { return 10.0 * std::log10(power + 1e-30); }
 
 FilterBank makeBank() {
   FilterBank bank;
-  bank.begin(kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
+  bank.begin(kBands, kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
              config::kMinBandwidthHz);
   return bank;
 }
@@ -64,7 +64,7 @@ auto sine(double hz, double amplitude) {
 
 TEST(filterbank_configuration) {
   FilterBank bank;
-  CHECK(bank.begin(kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
+  CHECK(bank.begin(kBands, kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
                    config::kMinBandwidthHz));
   CHECK(std::fabs(bank.centreHz(0) - config::kBandLowHz) < 0.01f);
   CHECK(std::fabs(bank.centreHz(kBands - 1) - config::kBandHighHz) < 1.0f);
@@ -148,7 +148,7 @@ struct TrackerRig {
   TrackerRig() {
     float centres[kBands];
     for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-    tracker.begin(centres);
+    tracker.begin(kBands, centres);
     // Room noise roughly like the bench: about -105 dB per band.
     for (int i = 0; i < kBands; ++i) noiseDb.push_back(-105.0f);
     jitterDb.assign(kBands, 3.0f);
@@ -366,7 +366,7 @@ TEST(end_to_end_tone_in_a_quiet_room) {
   LevelTracker tracker;
   float centres[kBands];
   for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-  tracker.begin(centres);
+  tracker.begin(kBands, centres);
   AudioFrame frame;
 
   std::mt19937 rng(11);
@@ -427,7 +427,7 @@ TEST(end_to_end_silent_again_after_music_stops) {
   LevelTracker tracker;
   float centres[kBands];
   for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-  tracker.begin(centres);
+  tracker.begin(kBands, centres);
   AudioFrame frame;
 
   std::mt19937 rng(21);

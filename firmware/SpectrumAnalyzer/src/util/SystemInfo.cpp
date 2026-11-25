@@ -1,6 +1,7 @@
 #include "SystemInfo.h"
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include "../config/Config.h"
@@ -19,6 +20,24 @@ const char* resetReasonText() {
     case ESP_RST_EXT: return "reset pin";
     default: return "other";
   }
+}
+
+bool resetWasPowerUp() {
+  const esp_reset_reason_t r = esp_reset_reason();
+  return r == ESP_RST_POWERON || r == ESP_RST_BROWNOUT;
+}
+
+bool resetWasCrash() {
+  const esp_reset_reason_t r = esp_reset_reason();
+  return r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT;
+}
+
+void logMemory(const char* stage) {
+  constexpr uint32_t kInternal = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  LOG_INFO("memory", "%s: internal RAM %u KB free, largest block %u KB, lowest %u KB", stage,
+           (unsigned)(heap_caps_get_free_size(kInternal) / 1024),
+           (unsigned)(heap_caps_get_largest_free_block(kInternal) / 1024),
+           (unsigned)(heap_caps_get_minimum_free_size(kInternal) / 1024));
 }
 
 void logBootInfo() {

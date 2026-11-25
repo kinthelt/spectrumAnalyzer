@@ -9,7 +9,7 @@ struct AudioFrame {
   // Per-LED level, 0 (at or below the noise floor / bottom of the range) to 1
   // (as loud as the loudest band). No smoothing beyond the filters: the spectrum
   // modes add their own attack, fall and peak behaviour.
-  float level[config::kNumLeds] = {};
+  float level[config::kMaxLedCount] = {};   // the first ledCount are in use
 
   float broadbandDb = -120;   // overall level, dBFS (sum of all bands)
   float agcRefDb = -120;      // top of the display window (loudest band, tilted dB)

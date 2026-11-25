@@ -49,6 +49,29 @@ bool parseSlot(const FormArgs& args, int* slot) {
 
 }  // namespace
 
+std::string applyStrip(const FormArgs& args, StripSetupManager& strip, bool* needsRestart) {
+  StripSetup next = strip.chosen();
+  int v = 0;
+  if (const char* s = args.get("ledCount")) {
+    if (!parseInt(s, config::kMinLedCount, config::kMaxLedCount, &v)) {
+      return "The number of LEDs must be " + std::to_string(config::kMinLedCount) + " to " +
+             std::to_string(config::kMaxLedCount) + ".";
+    }
+    next.ledCount = static_cast<uint16_t>(v);
+  }
+  if (const char* s = args.get("bassEnd")) {
+    if (std::strcmp(s, "left") == 0) {
+      next.bassOnRight = false;
+    } else if (std::strcmp(s, "right") == 0) {
+      next.bassOnRight = true;
+    } else {
+      return "'bassEnd' must be left or right";
+    }
+  }
+  *needsRestart = false;
+  return strip.change(next, needsRestart);   // validates; nothing changes on an error
+}
+
 std::string errorJson(const std::string& message) {
   JsonWriter j;
   j.beginObject().key("error").value(message).endObject();
@@ -87,6 +110,15 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   }
   j.endArray();
 
+  // Strip setup: as chosen, what's running, and the limits for the page's checks.
+  j.key("strip").beginObject();
+  j.key("ledCount").value(static_cast<int>(status.stripChosen.ledCount));
+  j.key("bassEnd").value(status.stripChosen.bassOnRight ? "right" : "left");
+  j.key("runningLedCount").value(static_cast<int>(status.stripRunning.ledCount));
+  j.key("minLeds").value(config::kMinLedCount);
+  j.key("maxLeds").value(config::kMaxLedCount);
+  j.endObject();
+
   j.key("status").beginObject();
   j.key("version").value(status.version);
   j.key("uptime").value(status.uptimeSeconds);
@@ -109,8 +141,13 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   j.key("onTrial").value(status.updateOnTrial);
   j.key("lastUndone").value(status.updateLastUndone);
   j.endObject();
+  j.key("memory").beginObject();
+  j.key("free").value(status.heapFree);
+  j.key("lowest").value(status.heapLowest);
+  j.endObject();
   j.key("smartHome").beginObject();
   j.key("started").value(status.homeStarted);
+  j.key("paused").value(status.homePaused);
   j.key("homes").beginArray();
   for (const std::string& app : status.homeApps) j.value(app);
   j.endArray();

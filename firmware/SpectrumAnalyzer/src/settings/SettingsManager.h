@@ -62,7 +62,8 @@ class SettingsManager {
   bool recallPreset(int slot, uint32_t nowMillis);
   bool deletePreset(int slot);
 
-  // Erases everything in the store and returns to defaults.
+  // Erases the current settings, presets and names, and returns to defaults.
+  // (Other things in the same store, such as the strip setup, are kept.)
   void factoryReset();
 
  private:

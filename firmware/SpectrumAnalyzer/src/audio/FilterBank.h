@@ -18,13 +18,17 @@
 
 class FilterBank {
  public:
-  static constexpr int kBands = config::kNumLeds;
+  static constexpr int kMaxBands = config::kMaxLedCount;
   static constexpr int kBlock = config::kAudioBlockSize;
   static constexpr int kMaxStages = 9;
 
-  // Designs the filters. Returns false if the settings need more decimation
-  // stages than the block size allows.
-  bool begin(float sampleRate, float lowHz, float highHz, float qScale, float minBandwidthHz);
+  // Designs bands filters (1 to kMaxBands, one per LED), log-spaced from lowHz to
+  // highHz; one band sits in the range's middle, as wide as the range. Returns
+  // false if bands is out of range or the settings need more decimation stages
+  // than the block size allows.
+  bool begin(int bands, float sampleRate, float lowHz, float highHz, float qScale, float minBandwidthHz);
+
+  int bandCount() const { return bands_; }
 
   // Feeds exactly kBlock samples (full scale = +/-1.0). Afterwards power(i) holds
   // the smoothed mean-square output of band i (a full-scale sine gives 0.5).
@@ -41,16 +45,17 @@ class FilterBank {
 
  private:
   float fs_ = 48000.0f;
+  int bands_ = 0;
   int numStages_ = 0;
-  float centreHz_[kBands] = {};
-  float q_[kBands] = {};
-  uint8_t stageOf_[kBands] = {};
+  float centreHz_[kMaxBands] = {};
+  float q_[kMaxBands] = {};
+  uint8_t stageOf_[kMaxBands] = {};
 
-  Biquad bandPass_[kBands][2];
-  float env_[kBands] = {};
-  float envCoef_[kBands] = {};
+  Biquad bandPass_[kMaxBands][2];
+  float env_[kMaxBands] = {};
+  float envCoef_[kMaxBands] = {};
   Biquad antiAlias_[kMaxStages][2];
-  uint8_t stageBands_[kMaxStages][kBands] = {};
+  uint8_t stageBands_[kMaxStages][kMaxBands] = {};
   int stageBandCount_[kMaxStages] = {};
   float buf_[2][kBlock / 2] = {};
 };

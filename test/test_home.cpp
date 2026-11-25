@@ -4,6 +4,7 @@
 
 #include "FakeSettingsStore.h"
 #include "TestFramework.h"
+#include "smarthome/CrashGuard.h"
 #include "smarthome/HomeRules.h"
 
 using namespace home;
@@ -234,4 +235,63 @@ TEST(home_qr_text_from_the_librarys_link) {
   CHECK(qrPayloadFromUrl(base + "MT%3AABC&x=1") == "MT:ABC");
   CHECK(qrPayloadFromUrl("https://example.com/") == "");
   CHECK(qrPayloadFromUrl("") == "");
+}
+
+// ---- Crash-loop safety net ----------------------------------------------------------------
+
+TEST(home_crash_guard_pauses_after_two_crashes_in_a_row) {
+  CrashGuard::State ram{0xDEADBEEF, 7, 9};   // junk, as after a power cut
+  {
+    CrashGuard g(ram);
+    g.begin(false);
+    CHECK(g.allowed() && g.crashes() == 0);
+    g.starting();                       // Matter starts... and the board crashes
+  }
+  {
+    CrashGuard g(ram);
+    g.begin(true);
+    CHECK(g.allowed() && g.crashes() == 1);   // one crash: try again
+    g.starting();
+  }
+  {
+    CrashGuard g(ram);
+    g.begin(true);
+    CHECK(!g.allowed());                // two in a row: paused
+  }
+  {
+    CrashGuard g(ram);
+    g.begin(false);                     // restarted on purpose (update, strip setup): still paused
+    CHECK(!g.allowed());
+    g.reset();                          // "turn back on" on the web page
+  }
+  CrashGuard g(ram);
+  g.begin(false);
+  CHECK(g.allowed());
+}
+
+TEST(home_crash_guard_ignores_crashes_once_stable_or_not_on_trial) {
+  CrashGuard::State ram{};
+  CrashGuard g(ram);
+  g.begin(false);
+  g.starting();
+  g.stable();                           // ran 60 s: later crashes aren't Matter starting up
+  CrashGuard a(ram);
+  a.begin(true);
+  CHECK(a.allowed() && a.crashes() == 0);
+  CrashGuard b(ram);                    // a crash before Matter even started doesn't count
+  b.begin(true);
+  CHECK(b.crashes() == 0);
+}
+
+TEST(home_crash_guard_intended_restart_on_trial_clears_count) {
+  CrashGuard::State ram{};
+  CrashGuard g(ram);
+  g.begin(false);
+  g.starting();
+  CrashGuard a(ram);
+  a.begin(true);                        // one crash
+  a.starting();
+  CrashGuard b(ram);
+  b.begin(false);                       // then a deliberate restart before stable
+  CHECK(b.crashes() == 0 && b.allowed());
 }

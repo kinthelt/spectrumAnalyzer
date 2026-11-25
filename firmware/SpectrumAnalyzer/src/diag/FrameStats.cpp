@@ -20,9 +20,11 @@ void FrameStats::logIfDue(uint32_t nowMillis) {
   const uint32_t elapsed = nowMillis - windowStartMillis_;
   if (elapsed < intervalMillis_) return;
 
-  LOG_INFO("stats", "%.1f fps, show() max %lu us, heap free %lu B, PSRAM free %lu B",
-           frames_ * 1000.0f / elapsed, (unsigned long)maxShowMicros_,
-           (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getFreePsram());
+  // "lowest": the least internal RAM there has been since start-up. If it keeps
+  // falling over days, something is leaking.
+  LOG_INFO("stats", "%.1f fps, show() max %lu us, heap free %lu B (lowest %lu B), PSRAM free %lu B",
+           frames_ * 1000.0f / elapsed, (unsigned long)maxShowMicros_, (unsigned long)ESP.getFreeHeap(),
+           (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getFreePsram());
 
   if (audioFrames_ > 0) {
     // Load = share of each block's real-time budget spent analysing it.

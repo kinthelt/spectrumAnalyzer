@@ -216,6 +216,22 @@ Attack, fall, hold and flash times are tuning constants in `src/config/`, set on
 - **Persistence:** stored with Preferences (flash). Saved about 5 s after the last change, to
   limit flash wear. Restored at power-on, so it comes back in its last mode.
 
+### Strip setup (step 10)
+
+Installation settings on Settings → Strip setup, stored under their own flash key (`leds`):
+not in presets, and kept by Reset settings (like Wi-Fi).
+
+- **Number of LEDs: 1-150**, for a strip cut to fit. Each LED in use is one band, log-spaced
+  over the fixed 40 Hz - 15 kHz (one LED: the range's middle). Every per-LED array stays
+  150 long, so memory use is the same at any setting; changing it restarts the lights.
+- **Bass end: left / right.** Right mirrors the whole picture (every mode, Gradient's ends,
+  the update colours), for a strip mounted the other way round. Applies at once.
+- **Why not more, or other frequencies:** step 10 first tried 1-1000 LEDs and a settable
+  20 Hz - 20 kHz range, with per-LED memory allocated at start-up. With Matter running,
+  internal RAM ran out (`esp-aes: Failed to allocate memory` a few seconds after Matter
+  started; RAM had already been down to 2 KB at its lowest), and the board crash-looped.
+  Rolled back to the 0.9.0 memory layout; the trial is on branch `step10-strip-setup`.
+
 ---
 
 ## 7. Network
@@ -235,7 +251,10 @@ working even if Matter misbehaves; Matter later pairs over the network
   (the router may simply have been off).
 - Ways back into setup without reaching the board in the ceiling:
   - **Forget Wi-Fi** (Settings on the web page, or Serial Monitor `forget`).
-  - **Power-cycle at the plug three times quickly** (each on-time under 5 s).
+  - **Power-cycle at the plug three times quickly** (each on-time under 5 s). Only real
+    power-ups count: two quick crash restarts were once taken for the trick (step 10), so
+    software restarts, crashes and watchdog resets clear the count instead. (The trick
+    itself didn't work on the bench in step 6; still to be looked at.)
 
 Spike findings that shaped the code:
 - Matter starts Wi-Fi through ESP-IDF directly, so Arduino's `WiFi.status()` can read
@@ -261,7 +280,8 @@ Spike findings that shaped the code:
   don't resolve `.local` names. A DHCP reservation on the router keeps that address fixed.
 - **Settings view:** status (version, Wi-Fi network and signal, address, audio, CPU load,
   uptime), and maintenance actions, each confirmed first: Learn room noise, Forget Wi-Fi,
-  Reset settings (Wi-Fi is kept). Above them, Firmware update (see below).
+  Reset settings (Wi-Fi and the strip setup are kept). Above them, Strip setup (section 6),
+  Apple Home & Google Home and Firmware update (below).
 - **Staying in sync:** the page polls `/api/state` every 2 s, so changes from another phone
   (or Apple/Google Home later) appear within a couple of seconds. While a finger is on a
   control, polled values don't fight it. Live controls send at most 10 changes a second,
@@ -356,6 +376,15 @@ Spike findings that shaped the code:
   - Removing deletes each pairing and reopens pairing. It deliberately doesn't use the
     library's `Matter.decommission()`: that is a Matter factory reset, which in the Matter
     SDK's ESP32 code also erases the saved Wi-Fi (`esp_wifi_restore()`).
+- **Crash-loop safety net** (`CrashGuard`): Matter is on trial for 60 s after it starts. Two
+  crashes or watchdog resets in a row during that time and later start-ups skip Matter; the
+  lights, web page and updates keep working, and Settings says Home is paused, with "Turn
+  back on" (restarts). The count lives in RAM that survives restarts but not a power cut, so
+  switching off at the plug also turns Home back on.
+- **Memory:** Matter's encryption needs internal RAM. The stats line and Settings show free
+  internal RAM and the lowest it has been since start-up; the start-up log has `memory:`
+  lines at each stage (start, LEDs and audio started, before Matter, Matter started, Matter
+  running 60 s).
 - The rules (conversions, inbox, applying, following, names, QR text) are plain C++
   (`src/smarthome/HomeRules`) with unit tests; `MatterBridge` connects them to the library.
 - Hubs: Apple TV (Apple Home) and Google Nest speaker (Google Home), both confirmed.
@@ -386,5 +415,5 @@ Each step ends with something testable on the bench.
 | Matter + WiFiManager on the same Wi-Fi radio | Tested in the spike: works (setup page first, then Matter pairs over Wi-Fi). |
 | Flash: Matter build size with two OTA slots in 8 MB | "Matter 8MB with spiffs" scheme: two 3.25 MB app slots. |
 | Filter-bank CPU load on the S3 | Measured: 43% of core 0. With Wi-Fi and Matter running, a stand-in kept ~12 ms timing (one 55 ms stall while pairing; mic buffer doubled). |
-| Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
+| Current limit | 5 A (step 10), with 14 AWG feeds at both ends; the supply gives 6 A. It was 2 A on the bench's jumper wires. |
 | `E cache: esp_cache_msync(113): invalid addr or null pointer` logged once at boot during FastLED start-up (core 3.3.11, FastLED 3.10.10), with or without PSRAM | No visible effect so far. Re-check in step 4 when audio DMA runs alongside the LED driver. |

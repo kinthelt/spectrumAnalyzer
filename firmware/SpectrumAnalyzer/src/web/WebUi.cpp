@@ -8,9 +8,9 @@
 
 namespace {
 
-// How long Forget Wi-Fi waits after replying, so the phone gets the answer
-// before the lights leave the network.
-constexpr uint32_t kForgetDelayMillis = 500;
+// How long Forget Wi-Fi (and a restart for a new strip setup) waits after
+// replying, so the phone gets the answer before the lights go away.
+constexpr uint32_t kReplyFirstMillis = 500;
 
 // The request's form fields, copied once (WebServer::arg returns temporaries).
 class ServerArgs : public FormArgs {
@@ -51,9 +51,13 @@ void WebUi::stop() {
 
 void WebUi::loop() {
   if (running_) server_.handleClient();
-  if (forgetPending_ && millis() - forgetRequestedMillis_ >= kForgetDelayMillis) {
+  if (forgetPending_ && millis() - forgetRequestedMillis_ >= kReplyFirstMillis) {
     forgetPending_ = false;
     if (hooks_.forgetWifi) hooks_.forgetWifi();
+  }
+  if (restartPending_ && millis() - restartRequestedMillis_ >= kReplyFirstMillis) {
+    restartPending_ = false;
+    if (hooks_.restart) hooks_.restart();
   }
 }
 
@@ -69,10 +73,11 @@ void WebUi::addRoutes() {
     const String path = String("/api/preset/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handlePreset(action); });
   }
-  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings", "home-pair", "home-unpair"}) {
+  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings", "home-pair", "home-unpair", "home-resume"}) {
     const String path = String("/api/action/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handleAction(action); });
   }
+  server_.on("/api/strip", HTTP_POST, [this]() { handleStrip(); });
   server_.on("/api/update", HTTP_POST, [this]() { handleUploadDone(); },
              [this]() { handleUploadChunk(); });
   server_.onNotFound([this]() { sendError(404, "not found"); });
@@ -115,6 +120,19 @@ void WebUi::handlePreset(const char* action) {
   sendState();
 }
 
+void WebUi::handleStrip() {
+  bool needsRestart = false;
+  const std::string err = web_api::applyStrip(ServerArgs(server_), strip_, &needsRestart);
+  if (!err.empty()) return sendError(400, err);
+  if (hooks_.stripChanged) hooks_.stripChanged();
+  if (needsRestart) {
+    LOG_INFO("web", "strip setup changed: %u LEDs; restarting to apply", (unsigned)strip_.chosen().ledCount);
+    restartPending_ = true;   // after this reply has gone out (see loop)
+    restartRequestedMillis_ = millis();
+  }
+  sendState();
+}
+
 void WebUi::handleAction(const char* action) {
   const String name(action);
   if (name == "learn-noise") {
@@ -132,6 +150,11 @@ void WebUi::handleAction(const char* action) {
     if (!hooks_.openPairing || !hooks_.openPairing()) {
       return sendError(503, "Pairing couldn't be opened. Are the lights on Wi-Fi?");
     }
+  } else if (name == "home-resume") {
+    LOG_INFO("web", "turn Apple/Google Home back on requested");
+    if (hooks_.resumeHome) hooks_.resumeHome();
+    restartPending_ = true;   // after this reply has gone out (see loop)
+    restartRequestedMillis_ = millis();
   } else if (name == "home-unpair") {
     LOG_INFO("web", "remove from all smart homes requested");
     if (!hooks_.removeAllHomes || !hooks_.removeAllHomes()) {

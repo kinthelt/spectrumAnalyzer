@@ -6,7 +6,7 @@
 
 class TwinkleMode : public LightMode {
  public:
-  static constexpr int kMaxLeds = config::kNumLeds;
+  static constexpr int kMaxLeds = config::kMaxLedCount;
 
   explicit TwinkleMode(uint32_t seed = 0x2545F491u) : seed_(seed), rng_(seed) {}
 
