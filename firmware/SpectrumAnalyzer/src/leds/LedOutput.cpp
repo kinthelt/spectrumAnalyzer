@@ -4,7 +4,19 @@
 
 void LedOutput::begin() {
   // WS2812B and SK6812 (both possible on the 1376 strip) use GRB colour order.
-  FastLED.addLeds<WS2812B, config::kLedDataPin, GRB>(leds_.data(), count_);
+  // LEDs past the chosen length get no data, and WS2812s keep their last colour
+  // for as long as they have power: on the bench they held the old picture after
+  // the length was lowered. So once, send black to the longest strip allowed
+  // (~30 ms for 1000), then carry on with the chosen length.
+  Buffer<CRGB> blank;
+  if (blank.allocate(config::kMaxLedCount)) {
+    CLEDController& strip =
+        FastLED.addLeds<WS2812B, config::kLedDataPin, GRB>(blank.data(), config::kMaxLedCount);
+    FastLED.show();
+    strip.setLeds(leds_.data(), count_);
+  } else {
+    FastLED.addLeds<WS2812B, config::kLedDataPin, GRB>(leds_.data(), count_);
+  }
   FastLED.setMaxPowerInVoltsAndMilliamps(config::kSupplyVolts, config::kPowerLimitMilliamps);
   FastLED.setBrightness(brightness_);
   clear();
