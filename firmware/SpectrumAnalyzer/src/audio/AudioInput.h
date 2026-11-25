@@ -1,37 +1,46 @@
 // Microphone input and analysis, running in its own task on core 0.
 //
 // The task reads 512-sample blocks from the ICS-43434 over I2S, runs the filter
-// bank and level tracker, and publishes each AudioFrame two ways:
-//   - a one-slot queue (newest wins) that the LED task consumes with latest();
-//   - a shared snapshot that anything else (live view, web page) can read
-//     with snapshot() without taking frames away from the LEDs.
+// bank and level tracker, and publishes each result (a summary plus one level
+// per LED) in a LevelsMailbox: the LED task takes new ones with latest(),
+// anything else (live view, web page) reads with snapshot().
+//
+// If the analysis takes more than kAudioLoadLimit of a block's time (too many
+// LEDs for the chip), the task gives core 0 a 1 ms break after the block, so
+// core 0 never starves into a watchdog restart; the spectrum just gets choppier.
 #pragma once
 
 #include <atomic>
 
 #include <driver/i2s_std.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
 
 #include "../config/Config.h"
-#include "../util/Shared.h"
+#include "../settings/StripSetup.h"
 #include "AudioFrame.h"
 #include "FilterBank.h"
 #include "LevelTracker.h"
+#include "LevelsMailbox.h"
 
 class AudioInput {
  public:
-  // Sets up I2S and the analysis, and starts the task. Returns false on failure
-  // (the rest of the firmware keeps running without audio).
-  bool begin();
+  // Sizes and designs the analysis for the strip (one band per LED, over its
+  // frequency range). False if out of memory or the range can't be built.
+  bool allocate(const StripSetup& setup);
 
-  // For the LED task only: copies the newest frame into out if one has arrived
-  // since the last call. Never blocks.
-  bool latest(AudioFrame* out);
+  // Sets up I2S and starts the task. Call after allocate(). Returns false on
+  // failure (the rest of the firmware keeps running without audio).
+  bool start();
+
+  int bandCount() const { return bank_.bandCount(); }
+
+  // For the LED task only: copies the newest frame (and bandCount() levels) if
+  // one has arrived since the last call. Never blocks for long.
+  bool latest(AudioFrame* out, float* levels) { return mailbox_.readIfNew(&lastTaken_, out, levels); }
 
   // For everyone else: copies the most recent frame (frame.sequence tells
-  // whether it's new). Returns false before the first frame.
-  bool snapshot(AudioFrame* out) const { return snapshot_.get(out) != 0; }
+  // whether it's new); levels may be nullptr. Returns false before the first frame.
+  bool snapshot(AudioFrame* out, float* levels = nullptr) const { return mailbox_.read(out, levels); }
 
   const FilterBank& filterBank() const { return bank_; }
 
@@ -54,12 +63,12 @@ class AudioInput {
   bool setupI2s();
 
   i2s_chan_handle_t rx_ = nullptr;
-  QueueHandle_t queue_ = nullptr;
 
   FilterBank bank_;
   LevelTracker tracker_;
   AudioFrame frame_;   // owned by the audio task while building
-  Shared<AudioFrame> snapshot_;
+  LevelsMailbox mailbox_;
+  uint32_t lastTaken_ = 0;   // LED task: sequence of the last frame it took
 
   int32_t raw_[config::kAudioBlockSize];
   float samples_[config::kAudioBlockSize];

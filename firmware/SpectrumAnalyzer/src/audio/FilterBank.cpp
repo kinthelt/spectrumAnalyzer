@@ -6,22 +6,37 @@
 
 #include <cmath>
 
-bool FilterBank::begin(float sampleRate, float lowHz, float highHz, float qScale,
+bool FilterBank::begin(int bands, float sampleRate, float lowHz, float highHz, float qScale,
                        float minBandwidthHz) {
   fs_ = sampleRate;
-  const float ratio = std::pow(highHz / lowHz, 1.0f / static_cast<float>(kBands - 1));
+  bands_ = 0;
+  if (bands < 1 || !centreHz_.allocate(bands) || !q_.allocate(bands) || !stageOf_.allocate(bands) ||
+      !bandPass_.allocate(2 * static_cast<size_t>(bands)) || !env_.allocate(bands) ||
+      !envCoef_.allocate(bands)) {
+    return false;
+  }
+  bands_ = bands;
+
+  // Neighbouring bands are ratio apart. One band sits at the range's (geometric)
+  // middle and is as wide as the whole range.
+  const float ratio = bands > 1 ? std::pow(highHz / lowHz, 1.0f / static_cast<float>(bands - 1)) : 1.0f;
+  const float firstHz = bands > 1 ? lowHz : std::sqrt(lowHz * highHz);
   // Q at which neighbouring bands meet at their -3 dB points.
-  const float qTile = 1.0f / (std::sqrt(ratio) - 1.0f / std::sqrt(ratio));
+  const float qTile = bands > 1 ? 1.0f / (std::sqrt(ratio) - 1.0f / std::sqrt(ratio))
+                                : firstHz / (highHz - lowHz);
   // Each band is two identical biquads in series (4th order) for steeper skirts.
   // Two in series reach -3 dB where each is -1.5 dB, so each stage's Q is scaled
   // by sqrt(sqrt(2) - 1) to keep the overall bandwidth.
   const float cascadeQ = std::sqrt(std::sqrt(2.0f) - 1.0f);
 
   numStages_ = 1;
-  for (int k = 0; k < kMaxStages; ++k) stageBandCount_[k] = 0;
+  for (int k = 0; k < kMaxStages; ++k) {
+    stageBandCount_[k] = 0;
+    stageFirst_[k] = 0;
+  }
 
-  for (int i = 0; i < kBands; ++i) {
-    const float f = lowHz * std::pow(ratio, static_cast<float>(i));
+  for (int i = 0; i < bands; ++i) {
+    const float f = firstHz * std::pow(ratio, static_cast<float>(i));
     centreHz_[i] = f;
 
     // Deepest stage k whose rate Fs/2^k still has f <= (Fs/2^k)/8.
@@ -30,14 +45,15 @@ bool FilterBank::begin(float sampleRate, float lowHz, float highHz, float qScale
     while (k + 1 < kMaxStages && f <= sampleRate / static_cast<float>(1 << (k + 1)) / 8.0f) ++k;
     stageOf_[i] = static_cast<uint8_t>(k);
     if (k + 1 > numStages_) numStages_ = k + 1;
-    stageBands_[k][stageBandCount_[k]++] = static_cast<uint8_t>(i);
+    // Frequencies rise with i and stages get shallower, so a stage's bands are consecutive.
+    if (stageBandCount_[k]++ == 0) stageFirst_[k] = i;
 
     const float stageFs = sampleRate / static_cast<float>(1 << k);
     const float q = std::fmin(qTile * qScale, f / minBandwidthHz);
     q_[i] = q;
-    bandPass_[i][0].setBandPass(stageFs, f, q * cascadeQ);
-    bandPass_[i][0].resetState();
-    bandPass_[i][1] = bandPass_[i][0];
+    bandPass_[2 * i].setBandPass(stageFs, f, q * cascadeQ);
+    bandPass_[2 * i].resetState();
+    bandPass_[2 * i + 1] = bandPass_[2 * i];
 
     // Envelope follower on y^2: time constant ~1 period of the centre frequency
     // smooths the ripple at 2f. The 10 ms minimum (about one analysis block) keeps
@@ -66,19 +82,19 @@ void FilterBank::process(const float* in) {
   const float* cur = in;
   int n = kBlock;
   for (int k = 0; k < numStages_; ++k) {
-    const int count = stageBandCount_[k];
-    for (int j = 0; j < count; ++j) {
-      const int i = stageBands_[k][j];
-      Biquad f0 = bandPass_[i][0];   // local copies keep the state in registers
-      Biquad f1 = bandPass_[i][1];
+    const int first = stageFirst_[k];
+    const int end = first + stageBandCount_[k];
+    for (int i = first; i < end; ++i) {
+      Biquad f0 = bandPass_[2 * i];   // local copies keep the state in registers
+      Biquad f1 = bandPass_[2 * i + 1];
       float e = env_[i];
       const float c = envCoef_[i];
       for (int s = 0; s < n; ++s) {
         const float y = f1.process(f0.process(cur[s]));
         e += c * (y * y - e);
       }
-      bandPass_[i][0] = f0;
-      bandPass_[i][1] = f1;
+      bandPass_[2 * i] = f0;
+      bandPass_[2 * i + 1] = f1;
       env_[i] = e;
     }
 
@@ -98,6 +114,6 @@ void FilterBank::process(const float* in) {
 
 double FilterBank::bandSamplesPerSecond() const {
   double total = 0;
-  for (int i = 0; i < kBands; ++i) total += fs_ / static_cast<double>(1 << stageOf_[i]);
+  for (int i = 0; i < bands_; ++i) total += fs_ / static_cast<double>(1 << stageOf_[i]);
   return total;
 }

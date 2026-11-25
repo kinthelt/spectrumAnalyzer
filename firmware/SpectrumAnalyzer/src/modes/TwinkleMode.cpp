@@ -15,14 +15,15 @@ float TwinkleMode::random01() {
 void TwinkleMode::reset(uint32_t nowMillis) {
   rng_ = seed_;
   lastMillis_ = nowMillis;
-  for (int i = 0; i < kMaxLeds; ++i) {
+  for (size_t i = 0; i < level_.size(); ++i) {
     level_[i] = 0.0f;
     phase_[i] = Phase::Dark;
   }
 }
 
 void TwinkleMode::render(const RenderContext& ctx, Rgb* out, int count) {
-  if (count > kMaxLeds) count = kMaxLeds;
+  // Sized at start-up; a larger count (only in tests) sizes it now.
+  if (static_cast<size_t>(count) > level_.size() && !allocate(count)) count = static_cast<int>(level_.size());
   float dt = (ctx.nowMillis - lastMillis_) / 1000.0f;
   if (dt > kMaxStepSeconds) dt = kMaxStepSeconds;
   lastMillis_ = ctx.nowMillis;

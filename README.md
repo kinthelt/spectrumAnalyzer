@@ -10,12 +10,27 @@ ordinary room lighting, controlled from a web page and from Apple Home and Googl
 
 ## Status
 
-Build step 9 of 10: Apple Home and Google Home (Matter). On first start the board opens a
+Build step 10 of 10: installation. On first start the board opens a
 **Spectrum-Setup** network for entering your Wi-Fi details; after that the web page is at
 **http://spectrum.local** (or the board's IP address, shown under Share on the page), and new
 firmware can be installed from its Settings page or with `tools/build.sh ota`. Pairing with
 Apple Home or Google Home is on the same Settings page. Modes: Spectrum Snappy, Spectrum Smooth, Solid, Gradient, Rainbow, Twinkle;
 settings and 8 presets saved to flash; Serial Monitor commands (type `help`).
+
+### Strip length, bass end and frequency range
+
+Set on the web page under **Settings → Strip setup** (no reflashing needed):
+
+- **Number of LEDs** (1-1000), for a strip cut to fit the room. Each LED is one frequency band.
+  **About 150 is a reasonable maximum on today's ESP32-S3:** the audio analysis already uses
+  about 45% of one processor core at 150 LEDs, and the cost grows with every LED (about 90% at
+  300). Above that the spectrum gets choppy and the page warns. A faster future chip could
+  take more; the limit of 1000 comes from memory and the strip's data speed (~33 frames/s at
+  1000 LEDs).
+- **Bass end** (left or right), for a strip mounted the other way round.
+- **Lowest and highest frequency** (20 Hz - 20 kHz), for a different microphone or taste.
+
+Changing the length or range restarts the lights. "Reset settings" keeps these, like Wi-Fi.
 
 ## Building from the command line
 
@@ -92,7 +107,7 @@ rm -rf /tmp/arduino_cache_* /tmp/arduino_build_* ~/.cache/arduino
 
 After a board-package update, also re-check the Tools menu: updates can reset Flash Size.
 
-Hardware constants (pins, strip length, current limit) are in
+Hardware constants (pins, default strip length, current limit) are in
 `firmware/SpectrumAnalyzer/src/config/Config.h`.
 
 ## Running the PC unit tests

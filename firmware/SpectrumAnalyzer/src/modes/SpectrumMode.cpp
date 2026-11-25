@@ -9,9 +9,13 @@ constexpr float kMaxStepSeconds = 0.1f;   // don't jump ahead after a stall
 const Rgb kWhite{255, 255, 255};
 }  // namespace
 
+bool SpectrumMode::allocate(int count) {
+  return display_.allocate(count) && flash_.allocate(count) && hold_.allocate(count);
+}
+
 void SpectrumMode::reset(uint32_t nowMillis) {
   lastMillis_ = nowMillis;
-  for (int i = 0; i < kMaxLeds; ++i) {
+  for (size_t i = 0; i < display_.size(); ++i) {
     display_[i] = 0.0f;
     flash_[i] = 0.0f;
     hold_[i] = 0.0f;
@@ -48,7 +52,8 @@ void SpectrumMode::updateSmooth(int i, float level, float dt) {
 }
 
 void SpectrumMode::render(const RenderContext& ctx, Rgb* out, int count) {
-  if (count > kMaxLeds) count = kMaxLeds;
+  // Sized at start-up; a larger count (only in tests) sizes it now.
+  if (static_cast<size_t>(count) > display_.size() && !allocate(count)) count = static_cast<int>(display_.size());
   float dt = (ctx.nowMillis - lastMillis_) / 1000.0f;
   if (dt > kMaxStepSeconds) dt = kMaxStepSeconds;
   lastMillis_ = ctx.nowMillis;
@@ -69,7 +74,7 @@ void SpectrumMode::render(const RenderContext& ctx, Rgb* out, int count) {
                        : ctx.settings.colourA;
 
   for (int i = 0; i < count; ++i) {
-    const float level = audio != nullptr ? audio->level[i] : 0.0f;
+    const float level = ctx.levels != nullptr ? ctx.levels[i] : 0.0f;
     if (style_ == Style::Snappy) {
       updateSnappy(i, level, dt);
     } else {

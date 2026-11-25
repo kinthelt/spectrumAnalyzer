@@ -313,6 +313,56 @@ async function openPage(browser, phone, scheme = "light") {
       await page.waitForSelector("#main-view:not([hidden])");
     });
 
+    await check("strip setup: bass end at once; length/range checked, saved, restart followed", async () => {
+      await page.click("#settings-btn");
+      await page.waitForSelector("#settings-view:not([hidden])");
+      assert.strictEqual(await page.inputValue("#strip-leds"), "150");
+      assert.strictEqual(await page.inputValue("#strip-low"), "40");
+      assert.strictEqual(await page.inputValue("#strip-high"), "15000");
+      assert.ok(await page.isDisabled("#strip-save"), "nothing to save yet");
+      const small = await page.evaluate(() => [...document.querySelectorAll("#settings-view button, #settings-view input")]
+        .filter((el) => el.offsetParent !== null && el.type !== "file")
+        .map((el) => [el.id || el.textContent, el.getBoundingClientRect().height]).filter(([, h]) => h < 40));
+      assert.deepStrictEqual(small, [], "settings tap targets");
+      const [scroll, client] = await page.evaluate(() => [document.documentElement.scrollWidth,
+                                                          document.documentElement.clientWidth]);
+      assert.ok(scroll <= client, `settings page is ${scroll}px wide on a ${client}px screen`);
+
+      // Bass end: applies at once, no restart.
+      const t0 = Date.now() / 1000;
+      await page.click('#bass-end [data-end="right"]');
+      await page.waitForFunction(() => document.querySelector('#bass-end [data-end="right"]').getAttribute("aria-checked") === "true");
+      const sent = (await requests(t0)).filter((r) => r.path === "/api/strip");
+      assert.deepStrictEqual(sent.map((r) => r.fields), [{ bassEnd: "right" }]);
+
+      // A range under one octave is caught before sending.
+      await page.fill("#strip-high", "70");
+      await page.waitForFunction(() => document.querySelector("#strip-msg").textContent.includes("octave"));
+      assert.ok(await page.isDisabled("#strip-save"));
+      await page.fill("#strip-high", "15000");
+
+      // 300 LEDs: confirm, restart, back with 300 and a warning that it's too many for the chip.
+      await page.fill("#strip-leds", "300");
+      assert.ok(!(await page.isDisabled("#strip-save")));
+      await page.click("#strip-save");
+      await page.waitForSelector("#confirm-dialog[open]");
+      assert.ok((await page.textContent("#confirm-text")).includes("300 LEDs, 40-15000 Hz"));
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#strip-msg").textContent.includes("restarting"));
+      await page.waitForFunction(() => document.querySelector("#strip-msg").textContent.includes("too much for this many LEDs"),
+                                 null, { timeout: 15000 });
+      assert.ok(!(await page.isVisible("#offline")), "no offline banner for the expected restart");
+      assert.strictEqual(await page.inputValue("#strip-leds"), "300");
+      assert.ok((await page.textContent("#facts")).includes("KB free (lowest"), "memory shown");
+      await page.screenshot({ path: path.join(OUT, `${phone}-strip.png`), fullPage: true });
+
+      // Put it back for the other tests (and wait out the pretend restart).
+      await fetch(`${BASE}/api/strip`, { method: "POST", body: new URLSearchParams({ ledCount: 150, bassEnd: "left" }) });
+      await page.waitForTimeout(3500);
+      await page.click("#back-btn");
+      await page.waitForSelector("#main-view:not([hidden])");
+    });
+
     await check("no script errors", async () => {
       assert.deepStrictEqual(errors, []);
     });

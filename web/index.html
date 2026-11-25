@@ -97,6 +97,11 @@ input[type=color] { width: 64px; height: 44px; padding: 0; border: 1px solid var
 .action .btn { align-self: flex-start; }
 .file-btn { position: relative; display: inline-flex; align-items: center; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr) 7.5em; align-items: center; gap: 12px; }
+input[type=number] { width: 100%; min-height: 44px; font: inherit; padding: 8px 10px; border-radius: 10px;
+                     border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.seg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.seg-row .seg { width: 10em; }
 .fw-progress { display: flex; flex-direction: column; gap: 6px; }
 .fw-progress progress { width: 100%; height: 12px; accent-color: var(--accent); }
 .fw-msg { margin: 0; font-size: 15px; }
@@ -191,6 +196,27 @@ footer.row { margin-top: 2px; }
     <dl class="facts" id="facts"></dl>
   </section>
 
+  <section class="card" aria-labelledby="h-strip">
+    <h2 id="h-strip">Strip setup</h2>
+    <div class="action">
+      <div class="seg-row">
+        <span>Bass end</span>
+        <div class="seg" role="radiogroup" aria-label="Bass end" id="bass-end">
+          <button data-end="left" role="radio" aria-checked="true">Left</button>
+          <button data-end="right" role="radio" aria-checked="false">Right</button>
+        </div>
+      </div>
+      <p>Mirrors everything, for a strip mounted the other way round. Applies at once.</p>
+      <label class="field" for="strip-leds">Number of LEDs<input type="number" id="strip-leds" inputmode="numeric" step="1"></label>
+      <label class="field" for="strip-low">Lowest frequency (Hz)<input type="number" id="strip-low" inputmode="numeric" step="1"></label>
+      <label class="field" for="strip-high">Highest frequency (Hz)<input type="number" id="strip-high" inputmode="numeric" step="1"></label>
+      <p>Each LED shows one frequency band, lowest at the bass end. About 150 LEDs suits today's
+         ESP32-S3; more need more processing. Changing these restarts the lights.</p>
+      <p class="fw-msg" id="strip-msg" role="status" hidden></p>
+      <button class="btn" id="strip-save" disabled>Save and restart</button>
+    </div>
+  </section>
+
   <section class="card" aria-labelledby="h-home">
     <h2 id="h-home">Apple Home &amp; Google Home</h2>
     <div class="action">
@@ -238,7 +264,7 @@ footer.row { margin-top: 2px; }
     </div>
     <div class="action">
       <b>Reset settings</b>
-      <p>Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.</p>
+      <p>Mode, colours, brightness and all presets go back to the defaults. Wi-Fi and the strip setup are kept.</p>
       <button class="btn danger" id="reset-btn">Reset settings…</button>
     </div>
   </section>
@@ -300,6 +326,7 @@ footer.row { margin-top: 2px; }
 //   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
 //   POST /api/update                 a firmware file (multipart, field "firmware")
 //   POST /api/action/home-pair | home-unpair   Apple Home / Google Home pairing
+//   POST /api/strip                  ledCount, bassEnd (left|right), lowHz, highHz
 // Every POST answers with the new state (or {"error": "..."}).
 // ---------------------------------------------------------------------------
 
@@ -449,13 +476,105 @@ function renderStatus(s) {
   fact(dl, "Microphone", !a.ok ? "Not working" : a.learningNoise ? "Learning room noise" : a.silent ? "Quiet" : "Hearing sound");
   fact(dl, "Audio load", a.loadPercent + "% of one core");
   fact(dl, "Running for", duration(st.uptime));
+  fact(dl, "Memory", `${Math.round(st.memory.free / 1024)} KB free (lowest ${Math.round(st.memory.lowest / 1024)} KB)`);
   fact(dl, "Firmware", st.version);
   const u = st.update, note = $("fw-note");
   note.textContent = u.onTrial ? "Just updated: the new firmware stays once it has been on Wi-Fi for 30 seconds." :
       u.lastUndone ? "The last update was undone: it didn't stay on Wi-Fi, so the previous firmware came back." : "";
   note.hidden = !note.textContent;
   renderSmartHome(st.smartHome);
+  renderStrip(s.strip, st.audio);
 }
+
+// ---- Strip setup ------------------------------------------------------------------------------
+const STRIP_FIELDS = { "strip-leds": "ledCount", "strip-low": "lowHz", "strip-high": "highHz" };
+let stripEdited = false;     // the boxes hold the user's unsaved typing: don't overwrite them
+
+function renderStrip(strip, audio) {
+  for (const b of $("bass-end").children) b.setAttribute("aria-checked", String(b.dataset.end === strip.bassEnd));
+  const lim = strip.limits;
+  $("strip-leds").min = lim.minLeds; $("strip-leds").max = lim.maxLeds;
+  for (const id of ["strip-low", "strip-high"]) { $(id).min = lim.lowestHz; $(id).max = lim.highestHz; }
+  if (!stripEdited) {
+    for (const [id, key] of Object.entries(STRIP_FIELDS)) $(id).value = strip[key];
+  }
+  stripCheck(strip);
+  if (!stripEdited && !updating) {
+    const warn = strip.fellBack
+      ? `The lights couldn't use ${strip.ledCount} LEDs (not enough memory), so they're running the last setup ` +
+        `that worked: ${strip.runningLedCount} LEDs.`
+      : audio.ok && audio.loadPercent >= lim.loadLimitPercent
+      ? `The audio analysis is using ${audio.loadPercent}% of its processor core: too much for this many LEDs, ` +
+        "so the spectrum will be choppy. Fewer LEDs, or a narrower range, will fix it."
+      : "";
+    stripMessage(warn, true);
+  }
+}
+
+function stripMessage(text, bad) {
+  const m = $("strip-msg");
+  m.textContent = text;
+  m.classList.toggle("bad", !!bad);
+  m.hidden = !text;
+}
+
+// Same rules as the lights (StripSetup.cpp); returns the problem, or "".
+function stripProblem(v, lim) {
+  if (!Number.isInteger(v.ledCount) || v.ledCount < lim.minLeds || v.ledCount > lim.maxLeds)
+    return `The number of LEDs must be ${lim.minLeds} to ${lim.maxLeds}.`;
+  if (!Number.isInteger(v.lowHz) || !Number.isInteger(v.highHz) || v.lowHz < lim.lowestHz || v.highHz > lim.highestHz)
+    return `The frequencies must be whole numbers between ${lim.lowestHz} Hz and ${lim.highestHz} Hz.`;
+  if (v.highHz < 2 * v.lowHz) return "The highest frequency must be at least double the lowest (one octave).";
+  return "";
+}
+
+function stripValues() {
+  const v = {};
+  for (const [id, key] of Object.entries(STRIP_FIELDS)) v[key] = Number($(id).value);
+  return v;
+}
+
+function stripCheck(strip) {
+  const v = stripValues();
+  const changed = Object.values(STRIP_FIELDS).some((k) => v[k] !== strip[k]);
+  const problem = changed ? stripProblem(v, strip.limits) : "";
+  if (stripEdited) stripMessage(problem, true);
+  $("strip-save").disabled = !changed || !!problem || updating;
+}
+
+for (const id of Object.keys(STRIP_FIELDS)) {
+  $(id).addEventListener("input", () => { stripEdited = true; if (state) stripCheck(state.strip); });
+}
+
+$("bass-end").onclick = (e) => {
+  const end = e.target.closest("button")?.dataset.end;
+  if (end) call("/api/strip", { bassEnd: end });
+};
+
+$("strip-save").onclick = () => {
+  const v = stripValues();
+  confirmThen("Restart with this setup?",
+    `${v.ledCount} LEDs, ${v.lowHz}-${v.highHz} Hz. The lights restart to use it and are back in a few seconds.`,
+    "Save and restart", async () => {
+      const before = state ? state.status : null;
+      const sentAt = Date.now();
+      const d = await call("/api/strip", v);
+      if (!d) return;
+      stripEdited = false;
+      updating = true;   // pause normal polling while the lights restart
+      $("strip-save").disabled = true;
+      stripMessage("Saved. The lights are restarting…");
+      const s = await waitForRestart(before, sentAt);
+      updating = false;
+      if (!s) {
+        stripMessage("The lights haven't come back yet. Try reloading this page in a minute.", true);
+        return;
+      }
+      setOnline(true);
+      render(s);
+      if (!s.strip.fellBack) stripMessage(`Restarted with ${s.strip.runningLedCount} LEDs.`);
+    });
+};
 
 // ---- Apple Home / Google Home ---------------------------------------------------------------
 let homeQrShown = "";
@@ -578,7 +697,7 @@ $("forget-btn").onclick = () => confirmThen("Forget Wi-Fi?",
   "The lights leave this network and open “Spectrum-Setup”. Join that network on a phone to enter new Wi-Fi details. This page will stop working.",
   "Forget Wi-Fi", () => call("/api/action/forget-wifi", {}).then((d) => d && toast("Forgetting Wi-Fi…")));
 $("reset-btn").onclick = () => confirmThen("Reset settings?",
-  "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi is kept.",
+  "Mode, colours, brightness and all presets go back to the defaults. Wi-Fi and the strip setup are kept.",
   "Reset", () => call("/api/action/reset-settings", {}).then((d) => d && toast("Settings reset")));
 
 // ---- Firmware update -----------------------------------------------------------------------
@@ -646,7 +765,7 @@ function uploadFirmware(file) {
     if (xhr.status === 200) {
       fwProgress(100);
       fwMessage("Installed. The lights are restarting…");
-      waitForRestart(before, sentAt);
+      waitForUpdate(before, sentAt);
     } else {
       fwDone();
       fwProgress(null);
@@ -664,6 +783,7 @@ function uploadFirmware(file) {
 }
 
 // Polls until the lights answer again after restarting (their uptime starts over).
+// Returns their new state, or null if they haven't come back within two minutes.
 async function waitForRestart(before, sentAt) {
   const deadline = Date.now() + 120000;
   let sawDown = false;
@@ -679,19 +799,25 @@ async function waitForRestart(before, sentAt) {
     }
     const elapsed = (Date.now() - sentAt) / 1000;
     const restarted = sawDown || !before || s.status.uptime < before.uptime + elapsed - 5;
-    if (!restarted) continue;
-    fwDone();
-    setOnline(true);
-    render(s);
-    fwProgress(null);
-    fwMessage(before && s.status.version === before.version
-      ? `The lights restarted, still on version ${s.status.version}.`
-      : `Updated to version ${s.status.version}.`);
+    if (restarted) return s;
+  }
+  return null;
+}
+
+async function waitForUpdate(before, sentAt) {
+  const s = await waitForRestart(before, sentAt);
+  fwDone();
+  if (!s) {
+    fwMessage("The lights haven't come back yet. If they don't within a few minutes, the previous " +
+              "firmware returns by itself.", true);
     return;
   }
-  fwDone();
-  fwMessage("The lights haven't come back yet. If they don't within a few minutes, the previous " +
-            "firmware returns by itself.", true);
+  setOnline(true);
+  render(s);
+  fwProgress(null);
+  fwMessage(before && s.status.version === before.version
+    ? `The lights restarted, still on version ${s.status.version}.`
+    : `Updated to version ${s.status.version}.`);
 }
 
 function fwDone() {

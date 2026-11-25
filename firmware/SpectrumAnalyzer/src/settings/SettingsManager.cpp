@@ -181,7 +181,15 @@ bool SettingsManager::deletePreset(int slot) {
 }
 
 void SettingsManager::factoryReset() {
-  store_.eraseAll();
+  // Only this class's own keys: the strip setup (and Wi-Fi, elsewhere) stay.
+  store_.remove(kCurrentKey);
+  for (int slot = 0; slot < kPresetCount; ++slot) {
+    char key[4];
+    presetKey(slot, key);
+    store_.remove(key);
+    nameKey(slot, key);
+    store_.remove(key);
+  }
   current_ = LightSettings{};
   lastSaved_ = current_;
   dirty_ = false;

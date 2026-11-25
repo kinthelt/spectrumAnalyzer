@@ -216,6 +216,34 @@ Attack, fall, hold and flash times are tuning constants in `src/config/`, set on
 - **Persistence:** stored with Preferences (flash). Saved about 5 s after the last change, to
   limit flash wear. Restored at power-on, so it comes back in its last mode.
 
+### Strip setup (step 10)
+
+Installation settings on Settings → Strip setup, kept apart from the light settings: not in
+presets, and kept by Reset settings (like Wi-Fi). Stored under their own flash keys
+(`strip`, and `stripok` for the last setup that started successfully).
+
+- **Number of LEDs: 1-1000.** Each LED is one frequency band, so the filter bank, level
+  tracking, the modes' per-LED state and the pixel buffer are all sized at start-up
+  (`util/Memory.h`: internal RAM while 128 KB stays free for Wi-Fi, the web page and Matter,
+  which start later; PSRAM beyond that). About **150 is a sensible maximum on today's
+  ESP32-S3**: the analysis takes ~45% of core 0 at 150 LEDs and grows in proportion (PC
+  estimate: ~88% at 300). 1000 is a hard cap: WS2812 data takes ~30 us per LED, so 1000 LEDs
+  top out near 33 frames/s.
+- **Bass end: left / right.** Right mirrors the whole picture (every mode, Gradient's ends,
+  the update colours), for a strip mounted the other way round. Applies at once.
+- **Frequency range: 20 Hz - 20 kHz**, the highest at least double the lowest. 20 Hz needs 9
+  halving stages, the most a 512-sample block allows. One LED sits at the range's geometric
+  middle, as wide as the range.
+- **Applying:** length and range are used at start-up, so saving them restarts the lights;
+  the page waits and reconnects, as after a firmware update.
+- **Safety nets** (the board is in the ceiling):
+  - Too many LEDs for the chip: after any block whose analysis took more than 65% of the
+    block's time, the audio task gives core 0 a 1 ms break, so its idle task always runs and
+    the watchdog can't restart the board (the restart seen during step 8 uploads). The
+    spectrum gets choppier; Settings warns when the audio load is over 65%.
+  - Not enough memory for the chosen setup at start-up: the lights use the last setup that
+    worked (then the defaults), and Settings says so.
+
 ---
 
 ## 7. Network
@@ -261,7 +289,8 @@ Spike findings that shaped the code:
   don't resolve `.local` names. A DHCP reservation on the router keeps that address fixed.
 - **Settings view:** status (version, Wi-Fi network and signal, address, audio, CPU load,
   uptime), and maintenance actions, each confirmed first: Learn room noise, Forget Wi-Fi,
-  Reset settings (Wi-Fi is kept). Above them, Firmware update (see below).
+  Reset settings (Wi-Fi and the strip setup are kept). Above them, Strip setup (section 6),
+  Apple Home & Google Home (below) and Firmware update (below).
 - **Staying in sync:** the page polls `/api/state` every 2 s, so changes from another phone
   (or Apple/Google Home later) appear within a couple of seconds. While a finger is on a
   control, polled values don't fight it. Live controls send at most 10 changes a second,
@@ -386,5 +415,5 @@ Each step ends with something testable on the bench.
 | Matter + WiFiManager on the same Wi-Fi radio | Tested in the spike: works (setup page first, then Matter pairs over Wi-Fi). |
 | Flash: Matter build size with two OTA slots in 8 MB | "Matter 8MB with spiffs" scheme: two 3.25 MB app slots. |
 | Filter-bank CPU load on the S3 | Measured: 43% of core 0. With Wi-Fi and Matter running, a stand-in kept ~12 ms timing (one 55 ms stall while pairing; mic buffer doubled). |
-| Current limit | ~2 A while on bench jumper wires; up to 5 A once the 14 AWG wiring is in. |
+| Current limit | 5 A (step 10), with 14 AWG feeds at both ends; the supply gives 6 A. It was 2 A on the bench's jumper wires. |
 | `E cache: esp_cache_msync(113): invalid addr or null pointer` logged once at boot during FastLED start-up (core 3.3.11, FastLED 3.10.10), with or without PSRAM | No visible effect so far. Re-check in step 4 when audio DMA runs alongside the LED driver. |

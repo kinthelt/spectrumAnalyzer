@@ -11,9 +11,13 @@
 
 class ModeManager {
  public:
-  // audio: the latest analysis, or nullptr if none has arrived recently.
-  void render(const LightSettings& settings, const AudioFrame* audio, uint32_t nowMillis,
-              Rgb* out, int count);
+  // Sets up every mode's per-LED state for count LEDs. False if out of memory.
+  bool allocate(int count);
+
+  // audio: the latest analysis, or nullptr if none has arrived recently;
+  // levels: its level per LED (count of them), nullptr with audio.
+  void render(const LightSettings& settings, const AudioFrame* audio, const float* levels,
+              uint32_t nowMillis, Rgb* out, int count);
 
   // The mode rendered last frame (useful for logging).
   Mode activeMode() const { return active_; }

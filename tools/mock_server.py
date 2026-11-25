@@ -8,7 +8,9 @@ Wi-Fi). It serves the page exactly as the firmware does (built by tools/embed_we
 with the QR library inline) and answers the same API as src/web/WebApi.cpp, keeping
 state in memory. Edits to web/ show up on reload. POST /api/update applies the same
 checks as the firmware to an uploaded file, then pretends to restart (no answers for 3 s).
-Apple/Google Home pairing is simulated; POST /__pair (field app) pretends an app paired. GET /__requests lists the requests received (used by the
+Apple/Google Home pairing is simulated; POST /__pair (field app) pretends an app paired.
+The strip setup follows the firmware's rules; the audio load grows with the LED count
+(43% at 150, as measured), so the page's overload warning can be seen. GET /__requests lists the requests received (used by the
 browser tests).
 """
 import argparse
@@ -60,6 +62,9 @@ class Lights:
         self.down_until = 0
         self.uploads = 0
         self.homes = []
+        # Kept by "Reset settings" (which re-runs __init__), as in the firmware.
+        self.strip = getattr(self, "strip", None) or dict(ledCount=150, bassEnd="left", lowHz=40, highHz=15000)
+        self.running_leds = getattr(self, "running_leds", 150)
         self.pairing_until = time.time() + 900   # unpaired at start: pairing open
         self.requests = []
 
@@ -72,12 +77,16 @@ class Lights:
             presets.append(p)
         return {
             "revision": self.revision, **self.s, "modes": MODES, "presets": presets,
+            "strip": {**self.strip, "runningLedCount": self.running_leds, "fellBack": False,
+                      "limits": {"minLeds": 1, "maxLeds": 1000, "lowestHz": 20, "highestHz": 20000,
+                                 "loadLimitPercent": 65}},
             "status": {
                 "version": self.version, "uptime": int(time.time() - self.started),
                 "wifi": {"connected": True, "ssid": "Home Wi-Fi", "rssi": -58, "ip": "192.168.3.234",
                          "url": "http://192.168.3.234/", "localUrl": "http://spectrum.local/"},
                 "audio": {"ok": True, "silent": False, "learningNoise": time.time() < self.learning_until,
-                          "loadPercent": 43},
+                          "loadPercent": round(43 * self.running_leds / 150)},
+                "memory": {"free": 76000, "lowest": 70000},
                 "update": {"maxBytes": UPDATE_MAX_BYTES, "onTrial": False, "lastUndone": False},
                 "smartHome": self.smart_home(),
             },
@@ -156,6 +165,35 @@ class Lights:
         self.version = "mock-%d" % self.uploads
         self.down_until = time.time() + 3
         self.started = self.down_until
+        return ""
+
+    def apply_strip(self, f):
+        """Same rules as web_api::applyStrip / StripSetup::validate (firmware)."""
+        nxt = dict(self.strip)
+        if "ledCount" in f:
+            if not re.fullmatch(r"\d{1,4}", f["ledCount"]) or not 1 <= int(f["ledCount"]) <= 1000:
+                return "The number of LEDs must be 1 to 1000."
+            nxt["ledCount"] = int(f["ledCount"])
+        if "bassEnd" in f:
+            if f["bassEnd"] not in ("left", "right"):
+                return "'bassEnd' must be left or right"
+            nxt["bassEnd"] = f["bassEnd"]
+        for k in ("lowHz", "highHz"):
+            if k in f:
+                if not re.fullmatch(r"\d{1,5}", f[k]):
+                    return "Frequencies are whole numbers of Hz."
+                nxt[k] = int(f[k])
+        if nxt["lowHz"] < 20 or nxt["highHz"] > 20000:
+            return "The frequencies must be between 20 Hz and 20000 Hz."
+        if nxt["highHz"] < 2 * nxt["lowHz"]:
+            return "The highest frequency must be at least double the lowest (one octave)."
+        restart = any(nxt[k] != self.strip[k] for k in ("ledCount", "lowHz", "highHz"))
+        self.strip = nxt
+        self.revision += 1
+        if restart:   # "restart": silent for 3 s, then running the new length
+            self.running_leds = nxt["ledCount"]
+            self.down_until = time.time() + 3
+            self.started = self.down_until
         return ""
 
     def smart_home(self):
@@ -258,6 +296,8 @@ class Handler(BaseHTTPRequestHandler):
                 err = ""
             elif path == "/api/state":
                 err = LIGHTS.apply_state(fields)
+            elif path == "/api/strip":
+                err = LIGHTS.apply_strip(fields)
             elif path.startswith("/api/preset/"):
                 err = LIGHTS.preset(path.rsplit("/", 1)[1], fields)
             elif path.startswith("/api/action/"):

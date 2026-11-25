@@ -28,6 +28,7 @@
 #include "src/net/StationIp.h"
 #include "src/settings/NvsSettingsStore.h"
 #include "src/settings/SettingsManager.h"
+#include "src/settings/StripSetupManager.h"
 #include "src/smarthome/MatterBridge.h"
 #include "src/update/FirmwareUpdate.h"
 #include "src/util/Log.h"
@@ -44,6 +45,7 @@
 
 static NvsSettingsStore store;
 static SettingsManager settings(store);
+static StripSetupManager strip(store);
 static Shared<LightSettings> sharedSettings;
 static uint32_t publishedRevision = 0;
 static AudioInput audio;
@@ -63,14 +65,29 @@ static void publishSettings() {
   publishedRevision = settings.revision();
 }
 
+// Sizes the audio analysis, the LEDs and the live view for the strip. False if
+// any of it doesn't fit in memory (whatever was sized is resized on the next try).
+static bool sizeForStrip(const StripSetup& s) {
+  return audio.allocate(s) && ledTask.allocate(s.ledCount) && audioMonitor.allocate(s.ledCount);
+}
+
 // Facts for the web page's status panel.
 static DeviceStatus deviceStatus();
-static WebUi webUi(settings, firmwareUpdate, WebUi::Hooks{
+static void restartNow() {
+  settings.flush();
+  LOG_INFO("boot", "restarting");
+  delay(100);   // let the log line out
+  ESP.restart();
+}
+
+static WebUi webUi(settings, strip, firmwareUpdate, WebUi::Hooks{
                                  deviceStatus,
                                  [] { audio.requestNoiseLearning(); },
                                  [] { connectivity.forgetWifi(); },
                                  [] { return smartHome.openPairing(); },
                                  [] { return smartHome.removeAllHomes(); },
+                                 [] { ledTask.setMirrored(strip.running().bassOnRight); },
+                                 restartNow,
                              });
 static bool audioStarted = false;
 
@@ -89,6 +106,12 @@ static DeviceStatus deviceStatus() {
   st.homePairingOpen = home.pairingOpen;
   st.homeManualCode = home.manualCode;
   st.homeQrPayload = home.qrPayload;
+
+  st.stripChosen = strip.chosen();
+  st.stripRunning = strip.running();
+  st.stripFellBack = strip.fellBack();
+  st.heapFree = ESP.getFreeHeap();
+  st.heapLowest = ESP.getMinFreeHeap();
 
   uint32_t ip = 0;
   if (connectivity.connected() && stationIp(&ip)) {
@@ -129,8 +152,32 @@ void setup() {
   firmwareUpdate.begin(millis());
   firmwareUpdate.setBeforeRestart([] { settings.flush(); });
   firmwareUpdate.setPauseHook([](bool paused) { audio.setPaused(paused); });
-  audioStarted = audio.begin();
-  ledTask.start();
+
+  // Size the audio analysis and the LEDs for the strip. If the chosen setup
+  // doesn't fit in memory, use the last one that worked, then the defaults.
+  strip.begin();
+  StripSetup running = strip.chosen();
+  bool sized = sizeForStrip(running);
+  if (!sized && strip.lastWorking() != running) {
+    LOG_ERROR("strip", "can't use %u LEDs; going back to the last setup that worked",
+              (unsigned)running.ledCount);
+    running = strip.lastWorking();
+    sized = sizeForStrip(running);
+  }
+  if (!sized && StripSetup{} != running) {
+    LOG_ERROR("strip", "going back to the default strip setup");
+    running = StripSetup{};
+    sized = sizeForStrip(running);
+  }
+  running.bassOnRight = strip.chosen().bassOnRight;
+  strip.setRunning(running);
+  ledTask.setMirrored(running.bassOnRight);
+  if (sized) {
+    audioStarted = audio.start();
+    ledTask.start();
+  } else {
+    LOG_ERROR("strip", "out of memory even for the default strip: LEDs and audio not started");
+  }
 
   const bool forceSetup = powerCycles.begin();
   connectivity.setWebService(&webUi);
@@ -151,9 +198,9 @@ void loop() {
   smartHome.loop(connectivity.connected(), millis());
   powerCycles.tick(millis());
 
-  // Live audio view: read the snapshot (the LED task consumes the queue).
+  // Live audio view: read the latest snapshot (the LED task takes its own copy).
   AudioFrame audioNow;
-  if (audioMonitor.enabled() && audio.snapshot(&audioNow) &&
+  if (audioMonitor.enabled() && audio.snapshot(&audioNow, audioMonitor.levels()) &&
       audioNow.sequence != monitoredSequence) {
     monitoredSequence = audioNow.sequence;
     audioMonitor.onFrame(audioNow, millis());

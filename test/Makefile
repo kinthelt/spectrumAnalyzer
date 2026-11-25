@@ -25,9 +25,12 @@ FIRMWARE_SOURCES := \
 	$(SRC_DIR)/update/UpdateSession.cpp \
 	$(SRC_DIR)/update/BootValidator.cpp \
 	$(SRC_DIR)/modes/UpdateBar.cpp \
-	$(SRC_DIR)/smarthome/HomeRules.cpp
+	$(SRC_DIR)/smarthome/HomeRules.cpp \
+	$(SRC_DIR)/util/Memory.cpp \
+	$(SRC_DIR)/settings/StripSetup.cpp \
+	$(SRC_DIR)/settings/StripSetupManager.cpp
 
-TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp test_update.cpp test_home.cpp
+TEST_SOURCES := test_main.cpp test_settings.cpp test_modes.cpp test_audio.cpp test_net.cpp test_web.cpp test_update.cpp test_home.cpp test_strip.cpp
 
 BUILD := build
 BIN := $(BUILD)/run_tests

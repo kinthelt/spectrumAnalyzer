@@ -31,21 +31,21 @@ bool AudioInput::setupI2s() {
   return i2s_channel_enable(rx_) == ESP_OK;
 }
 
-bool AudioInput::begin() {
-  if (!bank_.begin(config::kSampleRate, config::kBandLowHz, config::kBandHighHz,
-                   config::kBandQScale, config::kMinBandwidthHz)) {
-    LOG_ERROR("audio", "filter bank settings need more decimation stages than the block allows");
+bool AudioInput::allocate(const StripSetup& setup) {
+  if (!bank_.begin(setup.ledCount, config::kSampleRate, setup.lowHz, setup.highHz, config::kBandQScale,
+                   config::kMinBandwidthHz)) {
+    LOG_ERROR("audio", "filter bank for %u bands %.0f-%.0f Hz: out of memory or too many stages",
+              (unsigned)setup.ledCount, setup.lowHz, setup.highHz);
     return false;
   }
-  float centres[FilterBank::kBands];
-  for (int i = 0; i < FilterBank::kBands; ++i) centres[i] = bank_.centreHz(i);
-  tracker_.begin(centres);
+  if (!tracker_.begin(setup.ledCount, bank_.centres()) || !mailbox_.begin(setup.ledCount)) {
+    LOG_ERROR("audio", "out of memory for %u bands", (unsigned)setup.ledCount);
+    return false;
+  }
+  return true;
+}
 
-  queue_ = xQueueCreate(1, sizeof(AudioFrame));
-  if (queue_ == nullptr) {
-    LOG_ERROR("audio", "could not create frame queue");
-    return false;
-  }
+bool AudioInput::start() {
   if (!setupI2s()) {
     LOG_ERROR("audio", "I2S setup failed - check mic wiring and pins in Config.h");
     return false;
@@ -57,15 +57,11 @@ bool AudioInput::begin() {
     return false;
   }
 
-  LOG_INFO("audio", "%d bands %.0f-%.0f Hz, %d stages, %.2fM band-samples/s, mic on GPIO %d/%d/%d",
-           FilterBank::kBands, bank_.centreHz(0), bank_.centreHz(FilterBank::kBands - 1),
-           bank_.stageCount(), bank_.bandSamplesPerSecond() / 1e6, config::kMicBclkPin,
-           config::kMicWsPin, config::kMicDataPin);
+  const int n = bank_.bandCount();
+  LOG_INFO("audio", "%d bands %.0f-%.0f Hz, %d stages, %.2fM band-samples/s, mic on GPIO %d/%d/%d", n,
+           bank_.centreHz(0), bank_.centreHz(n - 1), bank_.stageCount(), bank_.bandSamplesPerSecond() / 1e6,
+           config::kMicBclkPin, config::kMicWsPin, config::kMicDataPin);
   return true;
-}
-
-bool AudioInput::latest(AudioFrame* out) {
-  return queue_ != nullptr && xQueueReceive(queue_, out, 0) == pdTRUE;
 }
 
 void AudioInput::taskEntry(void* self) { static_cast<AudioInput*>(self)->run(); }
@@ -74,6 +70,9 @@ void AudioInput::run() {
   constexpr float kBlockSeconds = static_cast<float>(config::kAudioBlockSize) / config::kSampleRate;
   // The mic sends 24-bit samples left-aligned in 32-bit words; scale to +/-1.0.
   constexpr float kScale = 1.0f / 2147483648.0f;
+  constexpr uint32_t kBlockMicros =
+      static_cast<uint32_t>(1000000ULL * config::kAudioBlockSize / config::kSampleRate);
+  constexpr uint32_t kLoadLimitMicros = static_cast<uint32_t>(kBlockMicros * config::kAudioLoadLimit);
 
   for (;;) {
     size_t bytesRead = 0;
@@ -89,14 +88,15 @@ void AudioInput::run() {
     for (int i = 0; i < config::kAudioBlockSize; ++i) samples_[i] = raw_[i] * kScale;
     bank_.process(samples_);
 
-    float power[FilterBank::kBands];
-    for (int i = 0; i < FilterBank::kBands; ++i) power[i] = bank_.power(i);
     if (learnRequested_.exchange(false)) tracker_.learnNoise();
-    tracker_.update(power, kBlockSeconds, &frame_);
+    tracker_.update(bank_.powers(), kBlockSeconds, &frame_);
 
     frame_.dspMicros = micros() - start;
     ++frame_.sequence;
-    xQueueOverwrite(queue_, &frame_);
-    snapshot_.set(frame_);
+    mailbox_.publish(frame_, tracker_.levels());
+
+    // Too many LEDs for the chip: let core 0's other work (and its idle task,
+    // which the watchdog checks) run before the next block.
+    if (frame_.dspMicros > kLoadLimitMicros) vTaskDelay(1);
   }
 }

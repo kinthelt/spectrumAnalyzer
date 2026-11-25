@@ -49,6 +49,35 @@ bool parseSlot(const FormArgs& args, int* slot) {
 
 }  // namespace
 
+std::string applyStrip(const FormArgs& args, StripSetupManager& strip, bool* needsRestart) {
+  StripSetup next = strip.chosen();
+  int v = 0;
+  if (const char* s = args.get("ledCount")) {
+    if (!parseInt(s, config::kMinLedCount, config::kMaxLedCount, &v)) {
+      return "The number of LEDs must be " + std::to_string(config::kMinLedCount) + " to " +
+             std::to_string(config::kMaxLedCount) + ".";
+    }
+    next.ledCount = static_cast<uint16_t>(v);
+  }
+  if (const char* s = args.get("bassEnd")) {
+    if (std::strcmp(s, "left") == 0) {
+      next.bassOnRight = false;
+    } else if (std::strcmp(s, "right") == 0) {
+      next.bassOnRight = true;
+    } else {
+      return "'bassEnd' must be left or right";
+    }
+  }
+  for (const char* field : {"lowHz", "highHz"}) {
+    if (const char* s = args.get(field)) {
+      if (!parseInt(s, 0, 99999, &v)) return "Frequencies are whole numbers of Hz.";
+      (std::strcmp(field, "lowHz") == 0 ? next.lowHz : next.highHz) = static_cast<float>(v);
+    }
+  }
+  *needsRestart = false;
+  return strip.change(next, needsRestart);   // validates; nothing changes on an error
+}
+
 std::string errorJson(const std::string& message) {
   JsonWriter j;
   j.beginObject().key("error").value(message).endObject();
@@ -87,6 +116,23 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   }
   j.endArray();
 
+  // Strip setup: as chosen, what's running, and the limits for the page's checks.
+  j.key("strip").beginObject();
+  j.key("ledCount").value(static_cast<int>(status.stripChosen.ledCount));
+  j.key("bassEnd").value(status.stripChosen.bassOnRight ? "right" : "left");
+  j.key("lowHz").value(static_cast<int>(status.stripChosen.lowHz + 0.5f));
+  j.key("highHz").value(static_cast<int>(status.stripChosen.highHz + 0.5f));
+  j.key("runningLedCount").value(static_cast<int>(status.stripRunning.ledCount));
+  j.key("fellBack").value(status.stripFellBack);
+  j.key("limits").beginObject();
+  j.key("minLeds").value(config::kMinLedCount);
+  j.key("maxLeds").value(config::kMaxLedCount);
+  j.key("lowestHz").value(static_cast<int>(config::kLowestHz));
+  j.key("highestHz").value(static_cast<int>(config::kHighestHz));
+  j.key("loadLimitPercent").value(static_cast<int>(config::kAudioLoadLimit * 100 + 0.5f));
+  j.endObject();
+  j.endObject();
+
   j.key("status").beginObject();
   j.key("version").value(status.version);
   j.key("uptime").value(status.uptimeSeconds);
@@ -108,6 +154,10 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   j.key("maxBytes").value(status.updateMaxBytes);
   j.key("onTrial").value(status.updateOnTrial);
   j.key("lastUndone").value(status.updateLastUndone);
+  j.endObject();
+  j.key("memory").beginObject();
+  j.key("free").value(status.heapFree);
+  j.key("lowest").value(status.heapLowest);
   j.endObject();
   j.key("smartHome").beginObject();
   j.key("started").value(status.homeStarted);

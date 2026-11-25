@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../config/Config.h"
+#include "../util/Memory.h"
 #include "LightMode.h"
 
 class SpectrumMode : public LightMode {
@@ -16,6 +17,7 @@ class SpectrumMode : public LightMode {
 
   explicit SpectrumMode(Style style) : style_(style) {}
 
+  bool allocate(int count) override;
   void reset(uint32_t nowMillis) override;
   void render(const RenderContext& ctx, Rgb* out, int count) override;
 
@@ -23,15 +25,13 @@ class SpectrumMode : public LightMode {
   float displayLevel(int i) const { return display_[i]; }
 
  private:
-  static constexpr int kMaxLeds = config::kNumLeds;
-
   void updateSnappy(int i, float level, float dt);
   void updateSmooth(int i, float level, float dt);
 
   Style style_;
   uint32_t lastMillis_ = 0;
-  float display_[kMaxLeds] = {};
-  float flash_[kMaxLeds] = {};     // Snappy: 1 at a new peak, fading to 0
-  float hold_[kMaxLeds] = {};      // Smooth: seconds left holding the peak
+  Buffer<float> display_;
+  Buffer<float> flash_;   // Snappy: 1 at a new peak, fading to 0
+  Buffer<float> hold_;    // Smooth: seconds left holding the peak
   float fade_ = 0.0f;              // 1 = full, 0 = faded out for silence
 };

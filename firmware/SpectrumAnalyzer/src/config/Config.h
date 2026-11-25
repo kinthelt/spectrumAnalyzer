@@ -6,12 +6,19 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.9.0";
+constexpr const char* kFirmwareVersion = "0.10.0";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
 constexpr int kLedDataPin = 7;    // -> SN74AHCT126N pin 2 (1A); pin 3 (1Y) -> 330R -> strip DIN
-constexpr int kNumLeds = 150;
+// The strip length is a setting (Settings > Strip setup, see settings/StripSetup.h);
+// these are its default and limits. Each LED is one frequency band. About 150 is a
+// sensible maximum on today's ESP32-S3: the audio analysis already uses ~45% of
+// core 0 at 150, and each LED adds its own filter. 1000 is a hard limit (memory,
+// and WS2812 data takes ~30 us per LED, so 1000 LEDs top out near 33 frames/s).
+constexpr int kDefaultLedCount = 150;
+constexpr int kMinLedCount = 1;
+constexpr int kMaxLedCount = 1000;
 
 // ---- Microphone: ICS-43434 over I2S ------------------------------------------
 constexpr int kMicBclkPin = 4;
@@ -23,8 +30,15 @@ constexpr int kSampleRate = 48000;
 // Samples per analysis block: 512 @ 48 kHz = 10.7 ms, ~94 updates per second.
 // Must be divisible by 2^(decimation stages - 1); 512 allows up to 9 stages.
 constexpr int kAudioBlockSize = 512;
-constexpr float kBandLowHz = 40.0f;      // centre of LED 0
-constexpr float kBandHighHz = 15000.0f;  // centre of the last LED (mic is rated to ~15 kHz)
+// The frequency range is a setting too (Strip setup); defaults and limits:
+constexpr float kDefaultLowHz = 40.0f;      // centre of the bass-end LED
+constexpr float kDefaultHighHz = 15000.0f;  // centre of the treble-end LED (mic is rated to ~15 kHz)
+constexpr float kLowestHz = 20.0f;          // needs 9 halving stages: the most a 512-sample block allows
+constexpr float kHighestHz = 20000.0f;      // below Nyquist (24 kHz) with room for the filter's skirt
+// The audio task gives core 0 a 1 ms break after any block whose analysis took
+// more than this share of the block's time, so too many LEDs can't starve core 0
+// into a watchdog restart (the spectrum just gets choppier). Settings warns from it.
+constexpr float kAudioLoadLimit = 0.65f;
 // 1.0 = neighbouring bands meet at their -3 dB points. <1 widens them, >1 narrows them.
 constexpr float kBandQScale = 1.0f;
 // Bands are never narrower than this. A band B Hz wide takes ~1/B s to respond,
@@ -131,10 +145,10 @@ constexpr uint32_t kAudioTaskStackBytes = 8192;
 
 // ---- Power -------------------------------------------------------------------
 // FastLED scales brightness down whenever a frame would draw more than this.
-// Bench (thin jumper wires): 2000 mA. After install with 14 AWG feeds at both
-// ends: raise to 5000 mA (the Mean Well GST60A05 supplies 6 A).
+// Installed with 14 AWG feeds at both ends: 5000 mA, leaving 1 A of the Mean Well
+// GST60A05's 6 A for the board. (It was 2000 mA on the bench's thin jumper wires.)
 constexpr uint8_t kSupplyVolts = 5;
-constexpr uint32_t kPowerLimitMilliamps = 2000;
+constexpr uint32_t kPowerLimitMilliamps = 5000;
 
 // ---- Output ------------------------------------------------------------------
 constexpr uint8_t kDefaultBrightness = 64;   // 0-255, global brightness

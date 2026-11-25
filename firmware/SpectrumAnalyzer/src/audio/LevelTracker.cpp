@@ -21,8 +21,14 @@ float LevelTracker::gateDb(int band) const {
   return floorDb_[band] + (margin > config::kNoiseMarginMinDb ? margin : config::kNoiseMarginMinDb);
 }
 
-void LevelTracker::begin(const float* centreHz) {
-  for (int i = 0; i < kBands; ++i) {
+bool LevelTracker::begin(int bands, const float* centreHz) {
+  bands_ = 0;
+  if (bands < 1 || !tiltDb_.allocate(bands) || !floorDb_.allocate(bands) || !noiseVarDb2_.allocate(bands) ||
+      !smoothDb_.allocate(bands) || !bandDb_.allocate(bands) || !level_.allocate(bands)) {
+    return false;
+  }
+  bands_ = bands;
+  for (int i = 0; i < bands_; ++i) {
     tiltDb_[i] = config::kTrebleTiltDbPerOctave * std::log2(centreHz[i] / 1000.0f);
     floorDb_[i] = -120.0f;
     // Start by assuming noisy bands (5 dB spread, a ~15 dB gate) so nothing
@@ -38,6 +44,7 @@ void LevelTracker::begin(const float* centreHz) {
   lastActive_ = 0;
   learnSecondsLeft_ = 0;
   warmupSeconds_ = 0;
+  return true;
 }
 
 void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
@@ -46,13 +53,13 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   if (warmupSeconds_ < config::kWarmupSeconds) {
     warmupSeconds_ += dt;
     float total = 0;
-    for (int i = 0; i < kBands; ++i) {
+    for (int i = 0; i < bands_; ++i) {
       total += bandPower[i];
       const float db = toDb(bandPower[i]) + tiltDb_[i];
       floorDb_[i] += (db - floorDb_[i]) * approach(dt, 0.1f);
       if (floorDb_[i] > config::kFloorCeilingDb) floorDb_[i] = config::kFloorCeilingDb;
       smoothDb_[i] = floorDb_[i];
-      out->level[i] = 0.0f;
+      level_[i] = 0.0f;
     }
     const float broadbandDb = toDb(total);
     quietRefDb_ = broadbandDb < config::kQuietCeilingDb ? broadbandDb : config::kQuietCeilingDb;
@@ -67,7 +74,7 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
 
   // 1. Overall level, and whether this is a quiet moment.
   float total = 0;
-  for (int i = 0; i < kBands; ++i) total += bandPower[i];
+  for (int i = 0; i < bands_; ++i) total += bandPower[i];
   const float broadbandDb = toDb(total);
 
   // How steady is the overall level? Compare a fast and a slow average.
@@ -93,11 +100,10 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   if (learnSecondsLeft_ > 0) learnSecondsLeft_ -= dt;
 
   // 2. Per-band level in dB with treble tilt; noise floors; loudest band.
-  float bandDb[kBands];
   float loudestDb = -1000.0f;
-  for (int i = 0; i < kBands; ++i) {
+  for (int i = 0; i < bands_; ++i) {
     const float db = toDb(bandPower[i]) + tiltDb_[i];
-    bandDb[i] = db;
+    bandDb_[i] = db;
     if (db > loudestDb) loudestDb = db;
 
     // Silence (or a learn request): settle on the average room level, both ways.
@@ -139,19 +145,19 @@ void LevelTracker::update(const float* bandPower, float dt, AudioFrame* out) {
   //    noise gate (or kDisplayRangeDb below the top, if higher) to the top, and
   //    is never narrower than kMinSpanDb, so noise alone can't fill it.
   uint16_t active = 0;
-  for (int i = 0; i < kBands; ++i) {
+  for (int i = 0; i < bands_; ++i) {
     const float gate = gateDb(i);
     const float windowBottom = agcRefDb_ - config::kDisplayRangeDb;
     const float lo = gate > windowBottom ? gate : windowBottom;
     const float hi = agcRefDb_ > lo + config::kMinSpanDb ? agcRefDb_ : lo + config::kMinSpanDb;
-    float level = (bandDb[i] - lo) / (hi - lo);
+    float level = (bandDb_[i] - lo) / (hi - lo);
     if (level <= 0.0f) {
       level = 0.0f;
     } else {
       ++active;
       if (level > 1.0f) level = 1.0f;
     }
-    out->level[i] = level;
+    level_[i] = level;
   }
 
   // 5. Silence. Entering needs a sustained run of quiet frames; once silent, small

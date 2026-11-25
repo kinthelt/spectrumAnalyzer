@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr int kBands = FilterBank::kBands;
+constexpr int kBands = config::kDefaultLedCount;
 constexpr int kBlock = FilterBank::kBlock;
 constexpr float kFs = config::kSampleRate;
 constexpr float kBlockSeconds = static_cast<float>(kBlock) / kFs;
@@ -20,7 +20,7 @@ double db(double power) { return 10.0 * std::log10(power + 1e-30); }
 
 FilterBank makeBank() {
   FilterBank bank;
-  bank.begin(kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
+  bank.begin(kBands, kFs, config::kDefaultLowHz, config::kDefaultHighHz, config::kBandQScale,
              config::kMinBandwidthHz);
   return bank;
 }
@@ -64,10 +64,10 @@ auto sine(double hz, double amplitude) {
 
 TEST(filterbank_configuration) {
   FilterBank bank;
-  CHECK(bank.begin(kFs, config::kBandLowHz, config::kBandHighHz, config::kBandQScale,
+  CHECK(bank.begin(kBands, kFs, config::kDefaultLowHz, config::kDefaultHighHz, config::kBandQScale,
                    config::kMinBandwidthHz));
-  CHECK(std::fabs(bank.centreHz(0) - config::kBandLowHz) < 0.01f);
-  CHECK(std::fabs(bank.centreHz(kBands - 1) - config::kBandHighHz) < 1.0f);
+  CHECK(std::fabs(bank.centreHz(0) - config::kDefaultLowHz) < 0.01f);
+  CHECK(std::fabs(bank.centreHz(kBands - 1) - config::kDefaultHighHz) < 1.0f);
   CHECK_EQ(bank.stageCount(), 8);
   std::printf("      %.2fM band-samples/s\n", bank.bandSamplesPerSecond() / 1e6);
 }
@@ -148,7 +148,7 @@ struct TrackerRig {
   TrackerRig() {
     float centres[kBands];
     for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-    tracker.begin(centres);
+    tracker.begin(kBands, centres);
     // Room noise roughly like the bench: about -105 dB per band.
     for (int i = 0; i < kBands; ++i) noiseDb.push_back(-105.0f);
     jitterDb.assign(kBands, 3.0f);
@@ -191,11 +191,11 @@ TEST(tracker_tone_lights_its_band_only) {
   TrackerRig rig;
   rig.runQuiet(10.0);
   rig.run(2.0, [](int band, double) { return band == 75 ? -60.0 : -1000.0; });
-  CHECK(rig.frame.level[75] > 0.9f);
+  CHECK(rig.tracker.level(75) > 0.9f);
   CHECK(!rig.frame.silent);
   int otherLit = 0;
   for (int i = 0; i < kBands; ++i)
-    if (i != 75 && rig.frame.level[i] > 0) ++otherLit;
+    if (i != 75 && rig.tracker.level(i) > 0) ++otherLit;
   CHECK(otherLit <= 2);
 }
 
@@ -325,9 +325,9 @@ TEST(tracker_hum_in_a_quiet_room_is_learned) {
   TrackerRig rig;
   rig.runQuiet(10.0);
   rig.run(3.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
-  CHECK(rig.frame.level[20] > 0.9f);
+  CHECK(rig.tracker.level(20) > 0.9f);
   rig.run(90.0, [](int band, double) { return band == 20 ? -63.0 : -1000.0; });
-  CHECK(rig.frame.level[20] == 0.0f);
+  CHECK(rig.tracker.level(20) == 0.0f);
   CHECK(rig.frame.silent);
 }
 
@@ -354,7 +354,7 @@ TEST(tracker_gain_follows_loudness) {
   float peak = 0;
   for (int f = 0; f < 100; ++f) {
     rig.run(kBlockSeconds, [&](int band, double t) { return pulsing(band, 50, -70.0, t + f * kBlockSeconds); });
-    peak = std::fmax(peak, rig.frame.level[50]);
+    peak = std::fmax(peak, rig.tracker.level(50));
   }
   CHECK(peak > 0.9f);
 }
@@ -366,7 +366,7 @@ TEST(end_to_end_tone_in_a_quiet_room) {
   LevelTracker tracker;
   float centres[kBands];
   for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-  tracker.begin(centres);
+  tracker.begin(kBands, centres);
   AudioFrame frame;
 
   std::mt19937 rng(11);
@@ -405,14 +405,14 @@ TEST(end_to_end_tone_in_a_quiet_room) {
   runFor(2.0, 1000.0, -45.0);   // a tone 30 dB above the room
   const int band = nearestBand(bank, 1000.0);
   std::printf("      1 kHz tone: LED %d level %.2f; +-3 LEDs %.2f/%.2f; +-8 LEDs %.2f/%.2f; %d lit\n",
-              band, frame.level[band], frame.level[band - 3], frame.level[band + 3],
-              frame.level[band - 8], frame.level[band + 8], frame.activeBands);
-  CHECK(frame.level[band] > 0.9f);
+              band, tracker.level(band), tracker.level(band - 3), tracker.level(band + 3),
+              tracker.level(band - 8), tracker.level(band + 8), frame.activeBands);
+  CHECK(tracker.level(band) > 0.9f);
   CHECK(!frame.silent);
-  CHECK(frame.level[band - 3] < 0.85f && frame.level[band + 3] < 0.85f);   // clear peak
-  CHECK(frame.level[band - 8] < 0.5f && frame.level[band + 8] < 0.5f);     // dim shoulders
+  CHECK(tracker.level(band - 3) < 0.85f && tracker.level(band + 3) < 0.85f);   // clear peak
+  CHECK(tracker.level(band - 8) < 0.5f && tracker.level(band + 8) < 0.5f);     // dim shoulders
   for (int i = 0; i < kBands; ++i)
-    if (std::abs(i - band) > 20) CHECK(frame.level[i] == 0.0f);           // nothing far away
+    if (std::abs(i - band) > 20) CHECK(tracker.level(i) == 0.0f);           // nothing far away
 
   runFor(config::kSilenceSeconds + 1.5, 0, 0);
   CHECK(frame.silent);
@@ -427,7 +427,7 @@ TEST(end_to_end_silent_again_after_music_stops) {
   LevelTracker tracker;
   float centres[kBands];
   for (int i = 0; i < kBands; ++i) centres[i] = bank.centreHz(i);
-  tracker.begin(centres);
+  tracker.begin(kBands, centres);
   AudioFrame frame;
 
   std::mt19937 rng(21);

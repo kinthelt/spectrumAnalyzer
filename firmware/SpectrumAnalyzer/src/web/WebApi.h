@@ -5,6 +5,7 @@
 //   GET  /api/state            -> stateJson()
 //   POST /api/state            on, mode, brightness, colourA, colourB, spectrumColour
 //   POST /api/preset/<action>  save (slot, name?), recall (slot), rename (slot, name), delete (slot)
+//   POST /api/strip            ledCount, bassEnd (left|right), lowHz, highHz
 //   (POST /api/action/<name> and POST /api/update are handled in WebUi.)
 //
 // POST bodies are form fields (application/x-www-form-urlencoded). Changes are
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "../settings/SettingsManager.h"
+#include "../settings/StripSetupManager.h"
 
 // Request fields, looked up by name. nullptr if absent.
 class FormArgs {
@@ -46,6 +48,13 @@ struct DeviceStatus {
   bool homePairingOpen = false;
   std::string homeManualCode;            // only sent to the page while pairing is open
   std::string homeQrPayload;             // "MT:...", likewise
+  // Strip setup (Settings > Strip setup)
+  StripSetup stripChosen;                // as set on the page
+  StripSetup stripRunning;               // what the lights started with
+  bool stripFellBack = false;            // chosen couldn't be used; running the last that worked
+  // Memory: internal RAM free now, and the lowest it has been since start-up.
+  uint32_t heapFree = 0;
+  uint32_t heapLowest = 0;
 };
 
 namespace web_api {
@@ -56,6 +65,10 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
 std::string applyState(const FormArgs& args, SettingsManager& settings, uint32_t nowMillis);
 std::string presetAction(const char* action, const FormArgs& args, SettingsManager& settings,
                          uint32_t nowMillis);
+
+// Changes the strip setup (fields present only; all or nothing). needsRestart:
+// the lights must restart to use it (length or frequency range changed).
+std::string applyStrip(const FormArgs& args, StripSetupManager& strip, bool* needsRestart);
 
 std::string errorJson(const std::string& message);
 

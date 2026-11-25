@@ -7,6 +7,7 @@
 //   POST /api/action/<name>    learn-noise | forget-wifi | reset-settings |
 //                              home-pair | home-unpair (Apple Home / Google Home)
 //   POST /api/update           a firmware file (multipart form, field "firmware")
+//   POST /api/strip            strip setup (length, bass end, frequency range)
 //
 // This class is only the HTTP glue: what a request means is decided in WebApi,
 // which is unit-tested on a PC. It runs from the Arduino loop (core 1), the
@@ -31,10 +32,12 @@ class WebUi : public HttpService {
     std::function<void()> forgetWifi;       // erase Wi-Fi and open the setup network
     std::function<bool()> openPairing;      // let a Home app pair for a while
     std::function<bool()> removeAllHomes;   // remove every Home pairing
+    std::function<void()> stripChanged;     // apply what applies at once (which end is bass)
+    std::function<void()> restart;          // save what's pending and restart the board
   };
 
-  WebUi(SettingsManager& settings, FirmwareUpdate& update, Hooks hooks)
-      : settings_(settings), update_(update), hooks_(hooks) {}
+  WebUi(SettingsManager& settings, StripSetupManager& strip, FirmwareUpdate& update, Hooks hooks)
+      : settings_(settings), strip_(strip), update_(update), hooks_(hooks) {}
 
   void start() override;
   void stop() override;
@@ -49,11 +52,13 @@ class WebUi : public HttpService {
   void handleState();
   void handlePreset(const char* action);
   void handleAction(const char* action);
+  void handleStrip();
   void handleUploadChunk();   // called for each piece of the file as it arrives
   void handleUploadDone();    // called once the whole request has arrived
 
   WebServer server_{80};
   SettingsManager& settings_;
+  StripSetupManager& strip_;
   FirmwareUpdate& update_;
   Hooks hooks_;
   bool routesAdded_ = false;
@@ -61,6 +66,9 @@ class WebUi : public HttpService {
   // Forget Wi-Fi waits until the reply has reached the phone; this is when it was asked.
   uint32_t forgetRequestedMillis_ = 0;
   bool forgetPending_ = false;
+  // A strip setup change that needs a restart waits for its reply to go out too.
+  uint32_t restartRequestedMillis_ = 0;
+  bool restartPending_ = false;
   // The firmware upload in the current request: did one start, was it refused
   // because another update was busy (and why)?
   bool uploadSeen_ = false;

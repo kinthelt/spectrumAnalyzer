@@ -10,7 +10,7 @@
 
 namespace {
 
-constexpr int kN = config::kNumLeds;
+constexpr int kN = config::kDefaultLedCount;
 
 LightSettings settingsWith(Mode mode) {
   LightSettings s;
@@ -61,7 +61,7 @@ TEST(solid_fills_colour_a) {
   ModeManager m;
   Rgb out[kN];
   const LightSettings s = settingsWith(Mode::Solid);
-  m.render(s, nullptr, 0, out, kN);
+  m.render(s, nullptr, nullptr, 0, out, kN);
   for (int i = 0; i < kN; ++i) CHECK(out[i] == s.colourA);
 }
 
@@ -69,7 +69,7 @@ TEST(gradient_runs_from_a_to_b) {
   ModeManager m;
   Rgb out[kN];
   const LightSettings s = settingsWith(Mode::Gradient);
-  m.render(s, nullptr, 0, out, kN);
+  m.render(s, nullptr, nullptr, 0, out, kN);
   CHECK(out[0] == s.colourA);
   CHECK(out[kN - 1] == s.colourB);
   for (int i = 1; i < kN; ++i) {   // red falls and blue rises steadily
@@ -83,14 +83,14 @@ TEST(rainbow_whole_strip_one_colour_cycling) {
   Rgb out[kN];
   const LightSettings s = settingsWith(Mode::Rainbow);
 
-  m.render(s, nullptr, 0, out, kN);
+  m.render(s, nullptr, nullptr, 0, out, kN);
   CHECK(out[0] == (Rgb{255, 0, 0}));   // starts at red
   for (int i = 1; i < kN; ++i) CHECK(out[i] == out[0]);
 
-  m.render(s, nullptr, config::kRainbowCycleMillis / 3, out, kN);
+  m.render(s, nullptr, nullptr, config::kRainbowCycleMillis / 3, out, kN);
   CHECK(out[0] == (Rgb{0, 255, 0}));   // a third of the way round: green
 
-  m.render(s, nullptr, config::kRainbowCycleMillis, out, kN);
+  m.render(s, nullptr, nullptr, config::kRainbowCycleMillis, out, kN);
   CHECK(out[0] == (Rgb{255, 0, 0}));   // full cycle: back to red
 }
 
@@ -101,7 +101,7 @@ TEST(twinkle_stays_within_colour_and_has_sensible_density) {
 
   long litFrames = 0, frames = 0;
   for (uint32_t t = 0; t < 120000; t += 10) {   // two minutes at 100 fps
-    m.render(s, nullptr, t, out, kN);
+    m.render(s, nullptr, nullptr, t, out, kN);
     for (int i = 0; i < kN; ++i) {
       CHECK(out[i].r <= s.colourA.r);
       CHECK(out[i].g <= s.colourA.g);
@@ -120,9 +120,9 @@ TEST(twinkle_fades_smoothly) {
   ModeManager m;
   Rgb prev[kN], out[kN];
   const LightSettings s = settingsWith(Mode::Twinkle);
-  m.render(s, nullptr, 0, prev, kN);
+  m.render(s, nullptr, nullptr, 0, prev, kN);
   for (uint32_t t = 10; t < 30000; t += 10) {
-    m.render(s, nullptr, t, out, kN);
+    m.render(s, nullptr, nullptr, t, out, kN);
     for (int i = 0; i < kN; ++i) {
       // Red channel of colour A is 255; per 10 ms frame it may move at most a
       // small step (fade-in of 0.4 s on a squared curve is the fastest change).
@@ -136,11 +136,11 @@ TEST(twinkle_restarts_dark_when_reselected) {
   ModeManager m;
   Rgb out[kN];
   LightSettings s = settingsWith(Mode::Twinkle);
-  for (uint32_t t = 0; t < 5000; t += 10) m.render(s, nullptr, t, out, kN);
+  for (uint32_t t = 0; t < 5000; t += 10) m.render(s, nullptr, nullptr, t, out, kN);
   s.mode = Mode::Solid;
-  m.render(s, nullptr, 5010, out, kN);
+  m.render(s, nullptr, nullptr, 5010, out, kN);
   s.mode = Mode::Twinkle;
-  m.render(s, nullptr, 5020, out, kN);   // first frame after switching back
+  m.render(s, nullptr, nullptr, 5020, out, kN);   // first frame after switching back
   for (int i = 0; i < kN; ++i) CHECK(isBlack(out[i]));
 }
 
@@ -150,7 +150,7 @@ TEST(off_renders_black_in_every_mode) {
     Rgb out[kN];
     LightSettings s = settingsWith(static_cast<Mode>(mode));
     s.on = false;
-    m.render(s, nullptr, 1234, out, kN);
+    m.render(s, nullptr, nullptr, 1234, out, kN);
     for (int i = 0; i < kN; ++i) CHECK(isBlack(out[i]));
   }
 }
@@ -161,7 +161,7 @@ TEST(every_mode_renders_without_touching_past_the_end) {
     Rgb out[kN + 1];
     out[kN] = Rgb{1, 2, 3};   // sentinel
     const LightSettings s = settingsWith(static_cast<Mode>(mode));
-    for (uint32_t t = 0; t < 3000; t += 10) m.render(s, nullptr, t, out, kN);
+    for (uint32_t t = 0; t < 3000; t += 10) m.render(s, nullptr, nullptr, t, out, kN);
     CHECK(out[kN] == (Rgb{1, 2, 3}));
   }
 }
@@ -173,8 +173,13 @@ namespace {
 constexpr uint32_t kFrameMs = 10;
 
 // Audio frame with every band at `level` (and not silent).
-AudioFrame audioAt(float level) {
-  AudioFrame a;
+// An analysis frame with its level per LED, as the LED task holds them.
+struct TestAudio : AudioFrame {
+  float level[kN] = {};
+};
+
+TestAudio audioAt(float level) {
+  TestAudio a;
   for (int i = 0; i < kN; ++i) a.level[i] = level;
   a.silent = false;
   return a;
@@ -194,10 +199,10 @@ struct SpectrumRig {
   Rgb out[kN];
   uint32_t t = 0;
   explicit SpectrumRig(Mode mode) : s(spectrumSettings(mode)) {}
-  void step(const AudioFrame* a, int frames = 1) {
+  void step(const TestAudio* a, int frames = 1) {
     for (int f = 0; f < frames; ++f) {
       t += kFrameMs;
-      m.render(s, a, t, out, kN);
+      m.render(s, a, a != nullptr ? a->level : nullptr, t, out, kN);
     }
   }
 };
@@ -206,7 +211,7 @@ struct SpectrumRig {
 
 TEST(spectrum_brightness_follows_gamma) {
   SpectrumRig rig(Mode::SpectrumSnappy);
-  const AudioFrame full = audioAt(1.0f), half = audioAt(0.5f);
+  const TestAudio full = audioAt(1.0f), half = audioAt(0.5f);
   rig.step(&full);
   CHECK_EQ(rig.out[10].r, 255);
   rig.step(&half, 50);   // let it fall to and settle at half level
@@ -216,7 +221,7 @@ TEST(spectrum_brightness_follows_gamma) {
 
 TEST(spectrum_snappy_rises_instantly_and_falls_fast) {
   SpectrumRig rig(Mode::SpectrumSnappy);
-  const AudioFrame quiet = audioAt(0.0f), loud = audioAt(1.0f);
+  const TestAudio quiet = audioAt(0.0f), loud = audioAt(1.0f);
   rig.step(&quiet, 10);
   rig.step(&loud);
   CHECK_EQ(rig.out[50].r, 255);   // full on the very first frame
@@ -228,7 +233,7 @@ TEST(spectrum_snappy_rises_instantly_and_falls_fast) {
 
 TEST(spectrum_snappy_flashes_on_sudden_peaks_only) {
   SpectrumRig rig(Mode::SpectrumSnappy);
-  const AudioFrame quiet = audioAt(0.0f), loud = audioAt(1.0f);
+  const TestAudio quiet = audioAt(0.0f), loud = audioAt(1.0f);
   rig.step(&quiet, 10);
   rig.step(&loud);
   // Sudden jump from 0 to 1: red blended toward white.
@@ -241,7 +246,7 @@ TEST(spectrum_snappy_flashes_on_sudden_peaks_only) {
   SpectrumRig gentle(Mode::SpectrumSnappy);
   gentle.step(&quiet, 10);
   for (int k = 1; k <= 20; ++k) {
-    const AudioFrame a = audioAt(k / 20.0f);
+    const TestAudio a = audioAt(k / 20.0f);
     gentle.step(&a);
     CHECK_EQ(gentle.out[30].g, 0);
   }
@@ -249,7 +254,7 @@ TEST(spectrum_snappy_flashes_on_sudden_peaks_only) {
 
 TEST(spectrum_smooth_rises_softly_holds_then_falls_slowly) {
   SpectrumRig rig(Mode::SpectrumSmooth);
-  const AudioFrame quiet = audioAt(0.0f), loud = audioAt(1.0f);
+  const TestAudio quiet = audioAt(0.0f), loud = audioAt(1.0f);
   rig.step(&quiet, 10);
   rig.step(&loud);
   CHECK(rig.m.activeMode() == Mode::SpectrumSmooth);
@@ -267,7 +272,7 @@ TEST(spectrum_smooth_rises_softly_holds_then_falls_slowly) {
 
 TEST(spectrum_fades_to_dark_in_silence_and_returns_at_once) {
   SpectrumRig rig(Mode::SpectrumSmooth);
-  AudioFrame a = audioAt(0.8f);
+  TestAudio a = audioAt(0.8f);
   rig.step(&a, 50);
   const uint8_t lit = rig.out[70].r;
   CHECK(lit > 100);
@@ -291,7 +296,7 @@ TEST(spectrum_dark_without_audio) {
 
 TEST(spectrum_colour_rainbow_cycle_or_fixed) {
   // Snappy reaches full brightness at once, so colour can be read directly.
-  const AudioFrame full = audioAt(1.0f), held = audioAt(1.0f);
+  const TestAudio full = audioAt(1.0f), held = audioAt(1.0f);
   SpectrumRig rig(Mode::SpectrumSnappy);
   rig.s.spectrumColour = SpectrumColour::RainbowCycle;
   rig.step(&full, 30);   // the jump to full flashes white; let the flash fade
@@ -308,7 +313,7 @@ TEST(spectrum_colour_rainbow_cycle_or_fixed) {
 
 TEST(spectrum_each_led_follows_its_own_band) {
   SpectrumRig rig(Mode::SpectrumSnappy);
-  AudioFrame a = audioAt(0.0f);
+  TestAudio a = audioAt(0.0f);
   a.level[0] = 1.0f;      // bass end
   a.level[149] = 0.5f;    // treble end
   rig.step(&a, 30);
