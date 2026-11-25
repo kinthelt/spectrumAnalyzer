@@ -12,7 +12,9 @@
 //     through the same callbacks; those echoes are recognised (they arrive on the
 //     loop's own task while it is sending) and ignored.
 //   - pairing: status for the Settings page, opening pairing for
-//     kPairingWindowSeconds, and removing every pairing (Wi-Fi and settings kept).
+//     kPairingWindowSeconds, and removing every pairing (Wi-Fi and settings kept);
+//   - a crash-loop safety net (CrashGuard): crashes right after Matter starts
+//     pause it, so the lights stay reachable.
 #pragma once
 
 #include <Arduino.h>
@@ -23,10 +25,12 @@
 #include <vector>
 
 #include "../settings/SettingsManager.h"
+#include "CrashGuard.h"
 #include "HomeRules.h"
 
 struct SmartHomeStatus {
   bool started = false;               // Matter is running (after the first Wi-Fi connection)
+  bool paused = false;                // skipped: it crashed the lights repeatedly (CrashGuard)
   std::vector<std::string> homes;     // apps it is paired with; empty = not paired
   bool pairingOpen = false;           // a Home app can pair now
   std::string manualCode;             // 11 digits, for typing in
@@ -35,7 +39,10 @@ struct SmartHomeStatus {
 
 class MatterBridge {
  public:
-  explicit MatterBridge(SettingsManager& settings) : settings_(settings) {}
+  explicit MatterBridge(SettingsManager& settings);
+
+  // Call once in setup(). crashed: the last reset was a crash or watchdog.
+  void begin(bool crashed);
 
   // Call every loop. wifiConnected: on the home Wi-Fi (starts Matter the first time).
   void loop(bool wifiConnected, uint32_t nowMillis);
@@ -46,6 +53,8 @@ class MatterBridge {
   bool openPairing();
   // Removes every pairing, then opens pairing so the lights can be added again.
   bool removeAllHomes();
+  // After a pause: Matter may start again from the next start-up (the caller restarts).
+  void resume();
 
  private:
   void start();
@@ -54,6 +63,9 @@ class MatterBridge {
   bool isOwnEcho() const { return sending_.load() && xTaskGetCurrentTaskHandle() == loopTask_; }
 
   SettingsManager& settings_;
+  CrashGuard guard_;
+  uint32_t startMillis_ = 0;
+  bool stableNoted_ = false;
   MatterEnhancedColorLight light_;
   home::HomeInbox inbox_;
   home::HomeView view_;            // what Home shows (as last sent or received)

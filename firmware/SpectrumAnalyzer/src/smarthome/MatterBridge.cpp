@@ -1,9 +1,14 @@
 #include "MatterBridge.h"
 
 #include <app/server/Server.h>
+#include <esp_attr.h>
 
 #include "../config/Config.h"
 #include "../util/Log.h"
+#include "../util/SystemInfo.h"
+
+// Survives restarts and crashes, not a power cut (see CrashGuard).
+RTC_NOINIT_ATTR static CrashGuard::State sCrashGuardState;
 
 namespace {
 
@@ -21,8 +26,26 @@ bool openWindowLocked() {
 
 }  // namespace
 
+MatterBridge::MatterBridge(SettingsManager& settings) : settings_(settings), guard_(sCrashGuardState) {}
+
+void MatterBridge::begin(bool crashed) {
+  guard_.begin(crashed);
+  status_.paused = !guard_.allowed();
+  if (status_.paused) {
+    LOG_WARN("home", "Apple/Google Home paused: the lights crashed %d times in a row just after starting it "
+                     "(turn it back on from the web page's Settings, or switch off at the plug)",
+             guard_.crashes());
+  }
+}
+
+void MatterBridge::resume() {
+  guard_.reset();
+  LOG_INFO("home", "Apple/Google Home will start again after the restart");
+}
+
 void MatterBridge::start() {
   loopTask_ = xTaskGetCurrentTaskHandle();
+  logMemory("before Matter");
   const LightSettings& s = settings_.current();
 
   // Home's starting values are the lights' saved settings.
@@ -54,8 +77,11 @@ void MatterBridge::start() {
   Matter.setProductName(config::kSmartHomeName);
   Matter.setDeviceName(config::kSmartHomeName);
   Matter.setSoftwareVersionString(config::kFirmwareVersion);
+  guard_.starting();   // a crash from here until stable() counts against Matter
   Matter.begin();
   started_ = true;
+  startMillis_ = millis();
+  logMemory("Matter started");
 
   status_.started = true;
   status_.manualCode = Matter.getManualPairingCode().c_str();
@@ -67,8 +93,13 @@ void MatterBridge::start() {
 
 void MatterBridge::loop(bool wifiConnected, uint32_t nowMillis) {
   if (!started_) {
-    if (!wifiConnected) return;
+    if (status_.paused || !wifiConnected) return;
     start();
+  }
+  if (!stableNoted_ && nowMillis - startMillis_ >= config::kMatterStableMillis) {
+    stableNoted_ = true;
+    guard_.stable();
+    logMemory("Matter running 60 s");
   }
 
   // From Home: apply what arrived since the last loop.

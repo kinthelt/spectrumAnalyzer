@@ -223,9 +223,12 @@ presets, and kept by Reset settings (like Wi-Fi). Stored under their own flash k
 (`strip`, and `stripok` for the last setup that started successfully).
 
 - **Number of LEDs: 1-1000.** Each LED is one frequency band, so the filter bank, level
-  tracking, the modes' per-LED state and the pixel buffer are all sized at start-up
-  (`util/Memory.h`: internal RAM while 128 KB stays free for Wi-Fi, the web page and Matter,
-  which start later; PSRAM beyond that). About **150 is a sensible maximum on today's
+  tracking, the modes' per-LED state and the pixel buffer are all sized at start-up, in
+  PSRAM (`util/Memory.h`). Internal RAM is kept for Wi-Fi and Matter: an earlier rule (internal
+  while 128 KB stayed free) left Matter short, and the board crashed with
+  `esp-aes: Failed to allocate memory` just after Matter started (bench, step 10; internal RAM
+  had already been down to 2 KB at its lowest). The start-up log now reports internal RAM at
+  each stage (`memory:` lines). About **150 is a sensible maximum on today's
   ESP32-S3**: the analysis takes ~45% of core 0 at 150 LEDs and grows in proportion (PC
   estimate: ~88% at 300). 1000 is a hard cap: WS2812 data takes ~30 us per LED, so 1000 LEDs
   top out near 33 frames/s.
@@ -263,7 +266,10 @@ working even if Matter misbehaves; Matter later pairs over the network
   (the router may simply have been off).
 - Ways back into setup without reaching the board in the ceiling:
   - **Forget Wi-Fi** (Settings on the web page, or Serial Monitor `forget`).
-  - **Power-cycle at the plug three times quickly** (each on-time under 5 s).
+  - **Power-cycle at the plug three times quickly** (each on-time under 5 s). Only real
+    power-ups count: two quick crash restarts were once taken for the trick (step 10), so
+    software restarts, crashes and watchdog resets now clear the count instead. (The trick
+    itself didn't work on the bench in step 6; still to be looked at.)
 
 Spike findings that shaped the code:
 - Matter starts Wi-Fi through ESP-IDF directly, so Arduino's `WiFi.status()` can read
@@ -385,6 +391,11 @@ Spike findings that shaped the code:
   - Removing deletes each pairing and reopens pairing. It deliberately doesn't use the
     library's `Matter.decommission()`: that is a Matter factory reset, which in the Matter
     SDK's ESP32 code also erases the saved Wi-Fi (`esp_wifi_restore()`).
+- **Crash-loop safety net** (`CrashGuard`): Matter is on trial for 60 s after it starts. Two
+  crashes or watchdog resets in a row during that time and later start-ups skip Matter; the
+  lights, web page and updates keep working, and Settings says Home is paused, with "Turn
+  back on" (restarts). The count lives in RAM that survives restarts but not a power cut, so
+  switching off at the plug also turns Home back on.
 - The rules (conversions, inbox, applying, following, names, QR text) are plain C++
   (`src/smarthome/HomeRules`) with unit tests; `MatterBridge` connects them to the library.
 - Hubs: Apple TV (Apple Home) and Google Nest speaker (Google Home), both confirmed.

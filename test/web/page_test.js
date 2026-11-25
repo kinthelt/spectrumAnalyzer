@@ -309,6 +309,19 @@ async function openPage(browser, phone, scheme = "light") {
       await page.click("#confirm-ok");
       await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Pairing is open"));
       assert.ok(await page.isVisible("#home-qr svg"));
+
+      // Paused by the crash-loop safety net: explained, and a way to turn it back on.
+      await fetch(`${BASE}/__home-paused`, { method: "POST" });
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Paused"),
+                                 null, { timeout: 4000 });
+      assert.ok(!(await page.isVisible("#home-pairing")) && !(await page.isVisible("#home-pair-btn")));
+      await page.screenshot({ path: path.join(OUT, `${phone}-home-paused.png`) });
+      await page.click("#home-resume-btn");
+      await page.click("#confirm-ok");
+      await page.waitForFunction(() => document.querySelector("#home-state").textContent.startsWith("Pairing is open"),
+                                 null, { timeout: 15000 });
+      assert.ok(!(await page.isVisible("#home-resume-btn")));
+      assert.ok(!(await page.isVisible("#offline")), "no offline banner for the expected restart");
       await page.click("#back-btn");
       await page.waitForSelector("#main-view:not([hidden])");
     });

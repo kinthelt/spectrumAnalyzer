@@ -161,6 +161,7 @@ std::string stateJson(const SettingsManager& settings, const DeviceStatus& statu
   j.endObject();
   j.key("smartHome").beginObject();
   j.key("started").value(status.homeStarted);
+  j.key("paused").value(status.homePaused);
   j.key("homes").beginArray();
   for (const std::string& app : status.homeApps) j.value(app);
   j.endArray();

@@ -66,6 +66,7 @@ class Lights:
         self.strip = getattr(self, "strip", None) or dict(ledCount=150, bassEnd="left", lowHz=40, highHz=15000)
         self.running_leds = getattr(self, "running_leds", 150)
         self.pairing_until = time.time() + 900   # unpaired at start: pairing open
+        self.home_paused = False
         self.requests = []
 
     def state(self):
@@ -198,11 +199,17 @@ class Lights:
 
     def smart_home(self):
         open_ = time.time() < self.pairing_until
-        return {"started": True, "homes": list(self.homes), "pairingOpen": open_,
+        if self.home_paused:
+            return {"started": False, "paused": True, "homes": [], "pairingOpen": False, "code": "", "qr": ""}
+        return {"started": True, "paused": False, "homes": list(self.homes), "pairingOpen": open_,
                 "code": "34970112332" if open_ else "", "qr": "MT:Y.K9042C00KA0648G00" if open_ else ""}
 
     def action(self, name):
-        if name == "home-pair":
+        if name == "home-resume":   # "restart": silent for 3 s, Home back on
+            self.home_paused = False
+            self.down_until = time.time() + 3
+            self.started = self.down_until
+        elif name == "home-pair":
             self.pairing_until = time.time() + 900
         elif name == "home-unpair":
             self.homes = []
@@ -289,7 +296,11 @@ class Handler(BaseHTTPRequestHandler):
                                                keep_blank_values=True).items()}
         with LIGHTS.lock:
             LIGHTS.requests.append({"method": "POST", "path": path, "fields": fields, "t": time.time()})
-            if path == "/__pair":   # test hook: an app paired, which closes pairing
+            if path == "/__home-paused":   # test hook: the crash guard paused Home
+                LIGHTS.home_paused = True
+                LIGHTS.revision += 1
+                err = ""
+            elif path == "/__pair":   # test hook: an app paired, which closes pairing
                 LIGHTS.homes.append(fields.get("app", "Apple Home"))
                 LIGHTS.pairing_until = 0
                 LIGHTS.revision += 1

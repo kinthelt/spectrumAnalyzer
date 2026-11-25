@@ -131,6 +131,10 @@ constexpr bool kTestUpdateNeverConfirms = false;
 constexpr const char* kSmartHomeName = "Spectrum Lights";  // the name the Home apps first show
 constexpr uint32_t kPairingWindowSeconds = 15u * 60;       // "Allow pairing" keeps it open this long
 constexpr uint32_t kHomeSendIntervalMillis = 200;          // changes go to Home at most 5 times a second
+// Crash-loop safety net (smarthome/CrashGuard.h): this many crashes in a row within
+// kMatterStableMillis of Matter starting, and Matter is paused until asked again.
+constexpr int kMatterCrashesToPause = 2;
+constexpr uint32_t kMatterStableMillis = 60u * 1000;
 
 // ---- LED task -----------------------------------------------------------------
 // Core 1, above the Arduino loop (priority 1), so network work never delays frames.

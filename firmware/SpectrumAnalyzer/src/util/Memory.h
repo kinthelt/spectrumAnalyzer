@@ -1,9 +1,11 @@
 // Memory for things sized at start-up (per-LED arrays: the strip length is a setting).
 //
-// On the board: fast internal RAM while enough stays free for Wi-Fi, the web
-// page and Matter (which starts after these are allocated, and needs ~100 KB),
-// otherwise the 8 MB PSRAM (slower, but plenty). On a PC: plain calloc.
-// Memory comes back zeroed.
+// On the board these go in the 8 MB PSRAM, falling back to internal RAM only if
+// there's no PSRAM. Internal RAM is kept for what can't use PSRAM: Wi-Fi, and
+// Matter with the encryption it uses. With Matter running it was down to ~2 KB
+// at its lowest on the bench (step 10), and the board crashed when it ran out.
+// The audio code works on local copies of its filter state, so PSRAM's slower
+// access costs little. On a PC: plain calloc. Memory comes back zeroed.
 #pragma once
 
 #include <cstddef>
@@ -11,9 +13,6 @@
 #include <utility>
 
 namespace memory {
-
-// Internal RAM is only used while at least this much would remain free afterwards.
-constexpr size_t kInternalReserveBytes = 128 * 1024;
 
 void* allocate(size_t bytes);   // nullptr if there's none anywhere
 void release(void* p);

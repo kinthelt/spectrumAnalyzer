@@ -230,6 +230,7 @@ footer.row { margin-top: 2px; }
       </div>
       <button class="btn" id="home-pair-btn" hidden>Allow pairing (15 minutes)</button>
       <button class="btn danger" id="home-unpair-btn" hidden>Remove from all smart homes…</button>
+      <button class="btn" id="home-resume-btn" hidden>Turn back on…</button>
     </div>
   </section>
 
@@ -325,7 +326,7 @@ footer.row { margin-top: 2px; }
 //   POST /api/preset/<action>        save | recall | rename | delete (slot, name)
 //   POST /api/action/<name>          learn-noise | forget-wifi | reset-settings
 //   POST /api/update                 a firmware file (multipart, field "firmware")
-//   POST /api/action/home-pair | home-unpair   Apple Home / Google Home pairing
+//   POST /api/action/home-pair | home-unpair | home-resume   Apple Home / Google Home
 //   POST /api/strip                  ledCount, bassEnd (left|right), lowHz, highHz
 // Every POST answers with the new state (or {"error": "..."}).
 // ---------------------------------------------------------------------------
@@ -585,6 +586,14 @@ function listWords(items) {
 
 function renderSmartHome(h) {
   const paired = h.homes.length > 0;
+  $("home-resume-btn").hidden = !h.paused;
+  $("home-state").classList.toggle("bad", !!h.paused);
+  if (h.paused) {
+    $("home-state").textContent = "Paused: the lights crashed twice in a row just after starting Apple Home " +
+      "and Google Home, so they've been left off. Everything else works.";
+    $("home-pairing").hidden = $("home-pair-btn").hidden = $("home-unpair-btn").hidden = true;
+    return;
+  }
   $("home-state").textContent = !h.started ? "This starts once the lights are on Wi-Fi."
     : h.pairingOpen ? (paired ? `Paired with ${listWords(h.homes)}. Pairing is open for another app.`
                               : "Pairing is open: add the lights in a Home app now.")
@@ -606,6 +615,18 @@ function renderSmartHome(h) {
 
 $("home-pair-btn").onclick = () =>
   call("/api/action/home-pair", {}).then((d) => d && toast("Pairing is open for 15 minutes"));
+$("home-resume-btn").onclick = () => confirmThen("Turn Apple Home and Google Home back on?",
+  "The lights restart to start them again. If they crash twice more, they'll be paused again.",
+  "Restart", async () => {
+    const before = state ? state.status : null;
+    const sentAt = Date.now();
+    if (!(await call("/api/action/home-resume", {}))) return;
+    updating = true;
+    $("home-state").textContent = "Restarting…";
+    const s = await waitForRestart(before, sentAt);
+    updating = false;
+    if (s) { setOnline(true); render(s); }
+  });
 $("home-unpair-btn").onclick = () => confirmThen("Remove from all smart homes?",
   "Apple Home and Google Home lose the lights (delete them in those apps too). Wi-Fi, settings and " +
   "presets stay, and the lights can be paired again afterwards.",

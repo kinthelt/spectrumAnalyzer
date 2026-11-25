@@ -86,6 +86,7 @@ static WebUi webUi(settings, strip, firmwareUpdate, WebUi::Hooks{
                                  [] { connectivity.forgetWifi(); },
                                  [] { return smartHome.openPairing(); },
                                  [] { return smartHome.removeAllHomes(); },
+                                 [] { smartHome.resume(); },
                                  [] { ledTask.setMirrored(strip.running().bassOnRight); },
                                  restartNow,
                              });
@@ -102,6 +103,7 @@ static DeviceStatus deviceStatus() {
 
   const SmartHomeStatus& home = smartHome.status();
   st.homeStarted = home.started;
+  st.homePaused = home.paused;
   st.homeApps = home.homes;
   st.homePairingOpen = home.pairingOpen;
   st.homeManualCode = home.manualCode;
@@ -146,10 +148,12 @@ void setup() {
   delay(500);   // give the USB serial port a moment so the first lines aren't lost
 
   logBootInfo();
+  logMemory("start");
   store.begin();
   settings.begin();
   publishSettings();
   firmwareUpdate.begin(millis());
+  smartHome.begin(resetWasCrash());
   firmwareUpdate.setBeforeRestart([] { settings.flush(); });
   firmwareUpdate.setPauseHook([](bool paused) { audio.setPaused(paused); });
 
@@ -172,6 +176,7 @@ void setup() {
   running.bassOnRight = strip.chosen().bassOnRight;
   strip.setRunning(running);
   ledTask.setMirrored(running.bassOnRight);
+  logMemory("strip sized");
   if (sized) {
     audioStarted = audio.start();
     ledTask.start();
@@ -179,7 +184,7 @@ void setup() {
     LOG_ERROR("strip", "out of memory even for the default strip: LEDs and audio not started");
   }
 
-  const bool forceSetup = powerCycles.begin();
+  const bool forceSetup = powerCycles.begin(resetWasPowerUp());
   connectivity.setWebService(&webUi);
   connectivity.begin(forceSetup);
 

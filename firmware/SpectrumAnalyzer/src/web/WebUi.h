@@ -5,7 +5,7 @@
 //   POST /api/state            change on, mode, brightness, colours
 //   POST /api/preset/<action>  save | recall | rename | delete
 //   POST /api/action/<name>    learn-noise | forget-wifi | reset-settings |
-//                              home-pair | home-unpair (Apple Home / Google Home)
+//                              home-pair | home-unpair | home-resume (Apple Home / Google Home)
 //   POST /api/update           a firmware file (multipart form, field "firmware")
 //   POST /api/strip            strip setup (length, bass end, frequency range)
 //
@@ -32,6 +32,7 @@ class WebUi : public HttpService {
     std::function<void()> forgetWifi;       // erase Wi-Fi and open the setup network
     std::function<bool()> openPairing;      // let a Home app pair for a while
     std::function<bool()> removeAllHomes;   // remove every Home pairing
+    std::function<void()> resumeHome;       // after a crash pause: allow Home again (then restart)
     std::function<void()> stripChanged;     // apply what applies at once (which end is bass)
     std::function<void()> restart;          // save what's pending and restart the board
   };

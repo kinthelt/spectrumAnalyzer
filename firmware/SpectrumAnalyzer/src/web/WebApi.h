@@ -44,6 +44,7 @@ struct DeviceStatus {
   bool updateLastUndone = false;  // the last update was undone (previous firmware came back)
   // Apple Home / Google Home (Matter)
   bool homeStarted = false;              // Matter runs once the lights are on Wi-Fi
+  bool homePaused = false;               // skipped after crashing the lights (CrashGuard)
   std::vector<std::string> homeApps;     // apps it is paired with
   bool homePairingOpen = false;
   std::string homeManualCode;            // only sent to the page while pairing is open

@@ -73,7 +73,7 @@ void WebUi::addRoutes() {
     const String path = String("/api/preset/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handlePreset(action); });
   }
-  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings", "home-pair", "home-unpair"}) {
+  for (const char* action : {"learn-noise", "forget-wifi", "reset-settings", "home-pair", "home-unpair", "home-resume"}) {
     const String path = String("/api/action/") + action;
     server_.on(path.c_str(), HTTP_POST, [this, action]() { handleAction(action); });
   }
@@ -151,6 +151,11 @@ void WebUi::handleAction(const char* action) {
     if (!hooks_.openPairing || !hooks_.openPairing()) {
       return sendError(503, "Pairing couldn't be opened. Are the lights on Wi-Fi?");
     }
+  } else if (name == "home-resume") {
+    LOG_INFO("web", "turn Apple/Google Home back on requested");
+    if (hooks_.resumeHome) hooks_.resumeHome();
+    restartPending_ = true;   // after this reply has gone out (see loop)
+    restartRequestedMillis_ = millis();
   } else if (name == "home-unpair") {
     LOG_INFO("web", "remove from all smart homes requested");
     if (!hooks_.removeAllHomes || !hooks_.removeAllHomes()) {
