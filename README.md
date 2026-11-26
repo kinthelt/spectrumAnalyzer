@@ -6,6 +6,7 @@ right), with brightness following the music picked up by a microphone. It also w
 ordinary room lighting, controlled from a web page and from Apple Home and Google Home.
 
 - **Design and build order:** [docs/DESIGN.md](docs/DESIGN.md)
+- **Installation checklist:** [docs/INSTALL.md](docs/INSTALL.md)
 - **Firmware:** [firmware/SpectrumAnalyzer](firmware/SpectrumAnalyzer)
 
 ## Status
@@ -88,9 +89,26 @@ the previous firmware comes back by itself. USB uploads are unaffected.
 
 5. Upload, then open Serial Monitor at 115200 baud with line ending set to "Newline".
 
-**Wi-Fi setup:** on first start (or after `forget`, or after switching the power off and on
-three times quickly), join the **Spectrum-Setup** network on a phone and enter your Wi-Fi
-details on the page that opens. The ESP32 needs a **2.4 GHz** network.
+**Wi-Fi setup:** on first start, join the **Spectrum-Setup** network on a phone and enter your
+Wi-Fi details on the page that opens. The ESP32 needs a **2.4 GHz** network.
+
+**Getting back into Wi-Fi setup** (new router or password), once the board is out of reach:
+
+- **Forget Wi-Fi** on the web page (Settings), if the page still works. This erases the saved
+  network and opens **Spectrum-Setup**.
+- **Automatically:** if the saved network can't be reached for 2 minutes after power-on, or is
+  lost for 5 minutes while running, **Spectrum-Setup** opens by itself.
+- **The power-cycle trick**, a last resort when nothing else works: switch off at the plug
+  and on again three times in a row, leaving it **on for about 2 seconds each time, never 5
+  or more**:
+
+  **on ~2 s → off → on ~2 s → off → on** (leave it on)
+
+  Each power-up only counts once the board has got a little way into starting (about 0.7 s);
+  staying on for 5 s clears the count. How long it stays *off* doesn't matter. On the third
+  power-up **Spectrum-Setup** opens. The saved network is kept: if nobody uses the setup page,
+  after 10 minutes the lights close it and rejoin the home Wi-Fi by themselves. (Serial
+  Monitor's `forget` command also works, with USB connected.)
 
 Last tested with esp32 core 3.3.13 and FastLED 3.10.10.
 

@@ -251,10 +251,13 @@ working even if Matter misbehaves; Matter later pairs over the network
   (the router may simply have been off).
 - Ways back into setup without reaching the board in the ceiling:
   - **Forget Wi-Fi** (Settings on the web page, or Serial Monitor `forget`).
-  - **Power-cycle at the plug three times quickly** (each on-time under 5 s). Only real
-    power-ups count: two quick crash restarts were once taken for the trick (step 10), so
-    software restarts, crashes and watchdog resets clear the count instead. (The trick
-    itself didn't work on the bench in step 6; still to be looked at.)
+  - **Power-cycle at the plug three times in a row**, each on-time about 2 s (at least
+    ~0.7 s, so the start-up gets far enough to count it, and under 5 s, which clears the
+    count); off-times don't matter. Only real power-ups count: two quick crash restarts were
+    once taken for the trick (step 10), so software restarts, crashes and watchdog resets
+    clear the count instead. Works on the bench (step 10); in step 6 the on-times were
+    probably too short to be counted. The saved network is kept, and the lights rejoin it
+    after 10 minutes if setup isn't used (tested). A last-resort hack, kept as it is.
 
 Spike findings that shaped the code:
 - Matter starts Wi-Fi through ESP-IDF directly, so Arduino's `WiFi.status()` can read
