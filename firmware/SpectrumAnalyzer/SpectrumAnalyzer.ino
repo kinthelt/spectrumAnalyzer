@@ -153,13 +153,15 @@ void setup() {
   strip.begin();
   const StripSetup& setup = strip.running();
   audioStarted = audio.begin(setup.ledCount);
+  logMemory("audio started");
   ledTask.setMirrored(setup.bassOnRight);
   ledTask.start(setup.ledCount);
-  logMemory("LEDs and audio started");
+  logMemory("LEDs started");
 
   const bool forceSetup = powerCycles.begin(resetWasPowerUp());
   connectivity.setWebService(&webUi);
   connectivity.begin(forceSetup);
+  logMemory("Wi-Fi started");
 
   console.printStatus();
   LOG_INFO("boot", "type 'help' in Serial Monitor for commands");
@@ -182,6 +184,16 @@ void loop() {
       audioNow.sequence != monitoredSequence) {
     monitoredSequence = audioNow.sequence;
     audioMonitor.onFrame(audioNow, audio.bandCount(), millis());
+  }
+
+  // How much of each task's stack has never been used, for sizing them (memory is tight).
+  static uint32_t lastStackLogMillis = 0;
+  if (millis() - lastStackLogMillis >= 30000) {
+    lastStackLogMillis = millis();
+    LOG_INFO("memory", "stack never used: audio %lu of %lu B, LEDs %lu of %lu B, loop %lu B",
+             (unsigned long)audio.stackSpareBytes(), (unsigned long)config::kAudioTaskStackBytes,
+             (unsigned long)ledTask.stackSpareBytes(), (unsigned long)config::kLedTaskStackBytes,
+             (unsigned long)uxTaskGetStackHighWaterMark(nullptr));
   }
 
   delay(1);   // let lower-priority tasks run; nothing here needs sub-millisecond timing

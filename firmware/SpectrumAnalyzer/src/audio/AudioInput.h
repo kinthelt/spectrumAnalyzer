@@ -46,6 +46,9 @@ class AudioInput {
   // Safe to call from any core.
   void setPaused(bool paused) { paused_.store(paused); }
 
+  // Bytes of the task's stack never used so far (0 before start). For sizing the stack.
+  uint32_t stackSpareBytes() const { return task_ != nullptr ? uxTaskGetStackHighWaterMark(task_) : 0; }
+
   // Count of I2S reads that failed or came back short (should stay 0).
   uint32_t readErrors() const { return readErrors_.load(); }
 
@@ -55,6 +58,7 @@ class AudioInput {
   bool setupI2s();
 
   i2s_chan_handle_t rx_ = nullptr;
+  TaskHandle_t task_ = nullptr;
   QueueHandle_t queue_ = nullptr;
 
   FilterBank bank_;

@@ -28,6 +28,9 @@ class LedTask {
   // after the first settings snapshot has been published.
   void start(int count);
 
+  // Bytes of the task's stack never used so far (0 before start). For sizing the stack.
+  uint32_t stackSpareBytes() const { return task_ != nullptr ? uxTaskGetStackHighWaterMark(task_) : 0; }
+
   // Bass end on the right: mirrors the whole picture. Safe from any task.
   void setMirrored(bool mirrored) { leds_.setMirrored(mirrored); }
 
@@ -40,6 +43,7 @@ class LedTask {
   const Shared<LightSettings>& settings_;
   const Shared<UpdateProgress>& update_;
 
+  TaskHandle_t task_ = nullptr;
   LedOutput leds_;
   ModeManager modes_;
   FrameStats stats_{config::kStatsIntervalMillis};

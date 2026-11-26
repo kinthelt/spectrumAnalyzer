@@ -96,7 +96,10 @@ void MatterBridge::loop(bool wifiConnected, uint32_t nowMillis) {
     if (status_.paused || !wifiConnected) return;
     start();
   }
-  if (!stableNoted_ && nowMillis - startMillis_ >= config::kMatterStableMillis) {
+  // millis(), not nowMillis: nowMillis was read before start() above, so on the
+  // first loop it is earlier than startMillis_ and the difference wrapped round
+  // to a huge number (bench: "running 60 s" was logged at once).
+  if (!stableNoted_ && millis() - startMillis_ >= config::kMatterStableMillis) {
     stableNoted_ = true;
     guard_.stable();
     logMemory("Matter running 60 s");

@@ -13,7 +13,7 @@ void LedTask::start(int count) {
   stats_.begin(millis());
 
   if (xTaskCreatePinnedToCore(entry, "leds", config::kLedTaskStackBytes, this,
-                              config::kLedTaskPriority, nullptr, config::kLedTaskCore) != pdPASS) {
+                              config::kLedTaskPriority, &task_, config::kLedTaskCore) != pdPASS) {
     LOG_ERROR("leds", "could not start the LED task");
   }
 }

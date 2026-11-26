@@ -51,7 +51,7 @@ bool AudioInput::begin(int ledCount) {
     return false;
   }
   if (xTaskCreatePinnedToCore(taskEntry, "audio", config::kAudioTaskStackBytes, this,
-                              config::kAudioTaskPriority, nullptr,
+                              config::kAudioTaskPriority, &task_,
                               config::kAudioTaskCore) != pdPASS) {
     LOG_ERROR("audio", "could not start audio task");
     return false;
