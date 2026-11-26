@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "../config/Config.h"
 #include "../settings/SettingsManager.h"
 #include "CrashGuard.h"
 #include "HomeRules.h"
@@ -49,6 +50,12 @@ class MatterBridge {
 
   const SmartHomeStatus& status() const { return status_; }
 
+  // Matter has started, and its start-up memory spike is over (see kMatterSettleMillis).
+  bool started() const { return started_; }
+  bool settled() const {
+    return started_ && (bleMemoryBack_.load() || millis() - startMillis_ >= config::kMatterSettleMillis);
+  }
+
   // Lets a Home app pair for kPairingWindowSeconds. Returns false if it couldn't.
   bool openPairing();
   // Removes every pairing, then opens pairing so the lights can be added again.
@@ -70,6 +77,7 @@ class MatterBridge {
   home::HomeInbox inbox_;
   home::HomeView view_;            // what Home shows (as last sent or received)
   std::atomic<bool> sending_{false};
+  std::atomic<bool> bleMemoryBack_{false};   // set on Matter's task
   TaskHandle_t loopTask_ = nullptr;
   bool started_ = false;
   uint32_t lastSendMillis_ = 0;

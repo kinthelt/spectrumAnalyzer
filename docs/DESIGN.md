@@ -381,6 +381,15 @@ Spike findings that shaped the code:
   lights, web page and updates keep working, and Settings says Home is paused, with "Turn
   back on" (restarts). The count lives in RAM that survives restarts but not a power cut, so
   switching off at the plug also turns Home back on.
+- **Start-up order (memory):** starting Matter briefly takes ~85 KB of internal RAM: the
+  prebuilt library starts Bluetooth, then shuts it down and hands its RAM back because we
+  pair over Wi-Fi. With the audio and LEDs (~46 KB) already running, that left 2 KB on the
+  bench, and some start-ups crashed (`esp-aes: Failed to allocate memory`). So the audio and
+  LEDs start after Matter's start-up (when the library reports Bluetooth's RAM is back, or
+  10 s after Matter starts); the strip stays dark for the first few seconds after power-on.
+  With no Wi-Fi 15 s after power-on they start anyway (then a later Matter start has the old,
+  small margin; rare, and the crash-loop safety net covers it). The audio and LED task stacks
+  were also cut from 8 KB to 5 KB (they never used more than ~2.4 KB).
 - **Memory:** Matter's encryption needs internal RAM. The stats line and Settings show free
   internal RAM and the lowest it has been since start-up; the start-up log has `memory:`
   lines at each stage (start, LEDs and audio started, before Matter, Matter started, Matter

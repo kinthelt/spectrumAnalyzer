@@ -74,6 +74,9 @@ void MatterBridge::start() {
   });
 
   Matter.setBLECommissioningEnabled(false);   // pair over Wi-Fi (step 6 spike)
+  // Runs on Matter's task once Bluetooth's memory is back: only set a flag (the
+  // library's own advice); the loop then starts the audio and LEDs.
+  Matter.onBLEMemoryReleased([this] { bleMemoryBack_.store(true); });
   Matter.setProductName(config::kSmartHomeName);
   Matter.setDeviceName(config::kSmartHomeName);
   Matter.setSoftwareVersionString(config::kFirmwareVersion);

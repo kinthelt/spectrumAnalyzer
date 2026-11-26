@@ -65,6 +65,33 @@ static void publishSettings() {
   publishedRevision = settings.revision();
 }
 
+// Starts the audio and the LEDs once Matter's start-up memory spike is over
+// (kMatterSettleMillis in Config.h): they need ~46 KB of the same internal RAM.
+static bool lightsStarted = false;
+static bool audioStarted = false;
+
+static void startLightsWhenReady() {
+  if (lightsStarted) return;
+  const char* why = nullptr;
+  if (smartHome.started()) {
+    if (!smartHome.settled()) return;   // never during the spike, however long we've waited
+    why = "after Matter's start-up";
+  } else if (smartHome.status().paused) {
+    why = "Apple/Google Home is paused";
+  } else if (millis() >= config::kLightsStartLatestMillis) {
+    why = "no Wi-Fi yet, so not waiting for Matter";
+  } else {
+    return;
+  }
+  lightsStarted = true;
+  LOG_INFO("boot", "starting the audio and LEDs (%s)", why);
+  const StripSetup& setup = strip.running();
+  audioStarted = audio.begin(setup.ledCount);
+  logMemory("audio started");
+  ledTask.start(setup.ledCount);
+  logMemory("LEDs started");
+}
+
 // Facts for the web page's status panel.
 static DeviceStatus deviceStatus();
 static void restartNow() {
@@ -84,7 +111,6 @@ static WebUi webUi(settings, strip, firmwareUpdate, WebUi::Hooks{
                                  [] { ledTask.setMirrored(strip.running().bassOnRight); },
                                  restartNow,
                              });
-static bool audioStarted = false;
 
 static DeviceStatus deviceStatus() {
   DeviceStatus st;
@@ -151,12 +177,8 @@ void setup() {
   smartHome.begin(resetWasCrash());
 
   strip.begin();
-  const StripSetup& setup = strip.running();
-  audioStarted = audio.begin(setup.ledCount);
-  logMemory("audio started");
-  ledTask.setMirrored(setup.bassOnRight);
-  ledTask.start(setup.ledCount);
-  logMemory("LEDs started");
+  ledTask.setMirrored(strip.running().bassOnRight);
+  // The audio and LEDs start from loop(), after Matter's start-up (see startLightsWhenReady).
 
   const bool forceSetup = powerCycles.begin(resetWasPowerUp());
   connectivity.setWebService(&webUi);
@@ -176,6 +198,7 @@ void loop() {
   firmwareUpdate.loop(connectivity.connected() && webUi.running(), millis());
   // Apple Home / Google Home: starts with the first Wi-Fi connection.
   smartHome.loop(connectivity.connected(), millis());
+  startLightsWhenReady();
   powerCycles.tick(millis());
 
   // Live audio view: read the snapshot (the LED task consumes the queue).

@@ -6,7 +6,7 @@
 namespace config {
 
 // ---- Firmware ----------------------------------------------------------------
-constexpr const char* kFirmwareVersion = "0.10.2";
+constexpr const char* kFirmwareVersion = "0.10.3";
 constexpr uint32_t kSerialBaud = 115200;
 
 // ---- LED strip: Adafruit 1376, 5 m x 30 LED/m --------------------------------
@@ -126,17 +126,25 @@ constexpr uint32_t kHomeSendIntervalMillis = 200;          // changes go to Home
 // kMatterStableMillis of Matter starting, and Matter is paused until asked again.
 constexpr int kMatterCrashesToPause = 2;
 constexpr uint32_t kMatterStableMillis = 60u * 1000;
+// Starting Matter briefly takes ~85 KB of internal RAM (it starts Bluetooth, then
+// shuts it down because we pair over Wi-Fi). With the audio and LEDs already running
+// that left 2 KB (bench, step 10), so they start once Matter's start-up is over:
+// when the library says Bluetooth's memory is back, or kMatterSettleMillis after
+// Matter started. If Matter hasn't started kLightsStartLatestMillis after power-on
+// (no Wi-Fi yet), the lights start anyway.
+constexpr uint32_t kMatterSettleMillis = 10u * 1000;
+constexpr uint32_t kLightsStartLatestMillis = 15u * 1000;
 
 // ---- LED task -----------------------------------------------------------------
 // Core 1, above the Arduino loop (priority 1), so network work never delays frames.
 constexpr int kLedTaskCore = 1;
 constexpr int kLedTaskPriority = 3;
-constexpr uint32_t kLedTaskStackBytes = 8192;
+constexpr uint32_t kLedTaskStackBytes = 5120;   // bench: never more than ~2.4 KB used
 
 // ---- Audio task --------------------------------------------------------------
 constexpr int kAudioTaskCore = 0;        // LEDs and the Arduino loop run on core 1
 constexpr int kAudioTaskPriority = 5;
-constexpr uint32_t kAudioTaskStackBytes = 8192;
+constexpr uint32_t kAudioTaskStackBytes = 5120;   // bench: never more than ~2.2 KB used
 
 // ---- Power -------------------------------------------------------------------
 // FastLED scales brightness down whenever a frame would draw more than this.
